@@ -3,8 +3,10 @@ import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
 // https://vite.dev/config/
+const BASE = '/trainright-health/'
+
 export default defineConfig({
-  base: './',
+  base: BASE,
   plugins: [
     react(),
     VitePWA({
@@ -17,22 +19,22 @@ export default defineConfig({
         theme_color: '#22c55e',
         background_color: '#ffffff',
         display: 'standalone',
-        scope: '/',
-        start_url: '/',
+        scope: BASE,
+        start_url: BASE,
         orientation: 'portrait',
         icons: [
           {
-            src: '/pwa-192x192.png',
+            src: `${BASE}pwa-192x192.png`,
             sizes: '192x192',
             type: 'image/png',
           },
           {
-            src: '/pwa-512x512.png',
+            src: `${BASE}pwa-512x512.png`,
             sizes: '512x512',
             type: 'image/png',
           },
           {
-            src: '/pwa-512x512.png',
+            src: `${BASE}pwa-512x512.png`,
             sizes: '512x512',
             type: 'image/png',
             purpose: 'any maskable',
@@ -40,6 +42,8 @@ export default defineConfig({
         ],
       },
       workbox: {
+        skipWaiting: true,
+        clientsClaim: true,
         globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
         runtimeCaching: [
           {
