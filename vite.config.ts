@@ -11,36 +11,11 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg'],
-      manifest: {
-        name: 'TrainRight Health',
-        short_name: 'TrainRight',
-        description: 'Track your daily nutrition and activities with ease',
-        theme_color: '#22c55e',
-        background_color: '#ffffff',
-        display: 'standalone',
-        scope: BASE,
-        start_url: BASE,
-        orientation: 'portrait',
-        icons: [
-          {
-            src: `${BASE}pwa-192x192.png`,
-            sizes: '192x192',
-            type: 'image/png',
-          },
-          {
-            src: `${BASE}pwa-512x512.png`,
-            sizes: '512x512',
-            type: 'image/png',
-          },
-          {
-            src: `${BASE}pwa-512x512.png`,
-            sizes: '512x512',
-            type: 'image/png',
-            purpose: 'any maskable',
-          },
-        ],
-      },
+      // manifest is served as a static file from public/manifest.webmanifest
+      // with the correct GitHub Pages start_url and scope.
+      // VitePWA auto-manifest generation is disabled to avoid it injecting
+      // a conflicting manifest with start_url: "/" into the HTML.
+      manifest: false,
       workbox: {
         skipWaiting: true,
         clientsClaim: true,
