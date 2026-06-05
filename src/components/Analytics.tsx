@@ -1,12 +1,11 @@
 import { useMemo } from 'react';
 import { format, subDays } from 'date-fns';
-import { getAllDailyEntries } from '../utils/storage';
-import { getTargetsForDate } from '../utils/training';
+import { getAllDailyEntries, getUserSettings } from '../utils/storage';
 import type { DailyEntry } from '../types';
 
 const Analytics = () => {
   const allEntries = getAllDailyEntries();
-  const todayTargets = getTargetsForDate(new Date());
+  const userSettings = getUserSettings();
   const today = format(new Date(), 'yyyy-MM-dd');
   const todayEntry = allEntries[today];
 
@@ -80,10 +79,9 @@ const Analytics = () => {
   const fatsPercent = Math.round((fatsCals / totalMacros) * 100);
 
   // Progress percentages
-  const caloriesPercent = Math.round((todayCalories / todayTargets.dailyCalories) * 100);
-  const proteinPercent2 = Math.round((todayProtein / todayTargets.dailyProtein) * 100);
-  const stepGoal = 5000;
-  const stepsPercent = Math.round((todaySteps / stepGoal) * 100);
+  const caloriesPercent = Math.round((todayCalories / userSettings.targets.dailyCalories) * 100);
+  const proteinPercent2 = Math.round((todayProtein / userSettings.targets.dailyProtein) * 100);
+  const stepsPercent = Math.round((todaySteps / 10000) * 100);
 
   return (
     <div className="p-6 space-y-6">
@@ -99,7 +97,7 @@ const Analytics = () => {
             <div className="flex justify-between mb-2">
               <span className="font-semibold">Calories</span>
               <span className="text-sm text-gray-600 dark:text-gray-400">
-                {todayCalories} / {todayTargets.dailyCalories}
+                {todayCalories} / {userSettings.targets.dailyCalories}
               </span>
             </div>
             <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3 overflow-hidden">
@@ -116,7 +114,7 @@ const Analytics = () => {
             <div className="flex justify-between mb-2">
               <span className="font-semibold">Protein</span>
               <span className="text-sm text-gray-600 dark:text-gray-400">
-                {todayProtein}g / {todayTargets.dailyProtein}g
+                {todayProtein}g / {userSettings.targets.dailyProtein}g
               </span>
             </div>
             <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3 overflow-hidden">
@@ -133,7 +131,7 @@ const Analytics = () => {
             <div className="flex justify-between mb-2">
               <span className="font-semibold">Steps</span>
               <span className="text-sm text-gray-600 dark:text-gray-400">
-                {todaySteps.toLocaleString()} / {stepGoal.toLocaleString()}
+                {todaySteps.toLocaleString()} / 10,000
               </span>
             </div>
             <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3 overflow-hidden">
@@ -196,7 +194,7 @@ const Analytics = () => {
             <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3 overflow-hidden">
               <div
                 className="bg-blue-500 h-3 transition-all duration-300"
-                style={{ width: `${Math.min(100, (avgCalories / todayTargets.dailyCalories) * 100)}%` }}
+                style={{ width: `${Math.min(100, (avgCalories / userSettings.targets.dailyCalories) * 100)}%` }}
               />
             </div>
             <p className="text-xs text-gray-500 mt-1">Based on {last7Days.length} days of data</p>
@@ -211,10 +209,10 @@ const Analytics = () => {
             <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3 overflow-hidden">
               <div
                 className="bg-green-500 h-3 transition-all duration-300"
-                style={{ width: `${Math.min(100, (avgProtein / todayTargets.dailyProtein) * 100)}%` }}
+                style={{ width: `${Math.min(100, (avgProtein / userSettings.targets.dailyProtein) * 100)}%` }}
               />
             </div>
-            <p className="text-xs text-gray-500 mt-1">Target: {todayTargets.dailyProtein}g/day</p>
+            <p className="text-xs text-gray-500 mt-1">Target: {userSettings.targets.dailyProtein}g/day</p>
           </div>
 
           {/* Weekly Steps */}
@@ -228,10 +226,10 @@ const Analytics = () => {
             <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3 overflow-hidden">
               <div
                 className="bg-purple-500 h-3 transition-all duration-300"
-                style={{ width: `${Math.min(100, (avgSteps / 5000) * 100)}%` }}
+                style={{ width: `${Math.min(100, (avgSteps / 10000) * 100)}%` }}
               />
             </div>
-            <p className="text-xs text-gray-500 mt-1">Goal: 5,000 steps/day</p>
+            <p className="text-xs text-gray-500 mt-1">Goal: 10,000 steps/day</p>
           </div>
 
           {/* Pushup Days Completed */}
@@ -285,7 +283,7 @@ const Analytics = () => {
                         (last7Days.filter(
                           (e) =>
                             e.totalCalories >=
-                            todayTargets.dailyCalories * 0.9,
+                            userSettings.targets.dailyCalories * 0.9,
                         ).length /
                           last7Days.length) *
                           100,

@@ -81,8 +81,6 @@ const calculateEfficiencyScore = (
 /**
  * Calculate optimal portion size for a food to match deficit
  */
-const MAX_PORTION_G = 300; // realistic single-serving cap
-
 const calculateOptimalPortion = (
   food: FoodItem,
   deficit: NutrientDeficit,
@@ -90,13 +88,13 @@ const calculateOptimalPortion = (
   // If protein is the main need, target that
   if (deficit.protein > 10) {
     if (food.protein > 0) {
-      return Math.min(MAX_PORTION_G, Math.round((deficit.protein / food.protein) * 100));
+      return Math.round((deficit.protein / food.protein) * 100);
     }
   }
 
   // Otherwise target calories
   if (food.calories > 0) {
-    return Math.min(MAX_PORTION_G, Math.round((deficit.calories / food.calories) * 100));
+    return Math.round((deficit.calories / food.calories) * 100);
   }
 
   // Default to 100g

@@ -14,7 +14,7 @@ interface FitnessProps {
 
 const DAILY_SETS_GOAL = 5;
 const DAILY_REPS_GOAL = 100;
-const DEFAULT_STEP_GOAL = 5000;
+const DEFAULT_STEP_GOAL = 10000;
 
 const Fitness = ({ selectedDate, onUpdate }: FitnessProps) => {
   const [customReps, setCustomReps] = useState('20');
@@ -24,10 +24,7 @@ const Fitness = ({ selectedDate, onUpdate }: FitnessProps) => {
 
   // const dateStr = format(selectedDate, 'yyyy-MM-dd');
 
-  // Re-read on every render (writes happen via storage; tick forces refresh)
-  const [tick, setTick] = useState(0);
-  const dailyFitness = useMemo(() => getDailyEntry(selectedDate).fitness, [selectedDate, tick]);
-  const bump = () => setTick((t) => t + 1);
+  const dailyFitness = useMemo(() => getDailyEntry(selectedDate).fitness, [selectedDate]);
   const sets: PushupSet[] = dailyFitness?.pushups?.sets || [];
   const setsCompleted = dailyFitness?.pushups?.setsCompleted || 0;
   const totalReps = dailyFitness?.pushups?.totalReps || 0;
@@ -46,7 +43,6 @@ const Fitness = ({ selectedDate, onUpdate }: FitnessProps) => {
   const handleCompleteSet = () => {
     const before = totalReps;
     addPushupSet(selectedDate, 20);
-    bump();
     onUpdate();
     // start rest timer by default
     restTimer.start();
@@ -68,7 +64,6 @@ const Fitness = ({ selectedDate, onUpdate }: FitnessProps) => {
     if (reps <= 0) return;
     addPushupSet(selectedDate, reps);
     setCustomReps('20');
-    bump();
     onUpdate();
   };
 
@@ -82,7 +77,6 @@ const Fitness = ({ selectedDate, onUpdate }: FitnessProps) => {
   const handleSetSteps = () => {
     const v = Math.max(0, parseInt(stepsInput) || 0);
     setSteps(selectedDate, v);
-    bump();
     onUpdate();
   };
 
@@ -93,7 +87,6 @@ const Fitness = ({ selectedDate, onUpdate }: FitnessProps) => {
 
   const handleDelete = (ts: string) => {
     deletePushupSet(selectedDate, ts);
-    bump();
     onUpdate();
   };
 
@@ -107,7 +100,6 @@ const Fitness = ({ selectedDate, onUpdate }: FitnessProps) => {
     const reps = Math.max(0, parseInt(editingReps) || 0);
     updatePushupSet(selectedDate, editingTimestamp, reps);
     setEditingTimestamp(null);
-    bump();
     onUpdate();
   };
 

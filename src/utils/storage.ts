@@ -1,4 +1,4 @@
-import type { DailyEntry, UserSettings, FoodEntry, Exercise, FoodItem } from '../types';
+import type { DailyEntry, UserSettings, FoodEntry, Exercise, FoodItem, BodyStatEntry } from '../types';
 import { format } from 'date-fns';
 import { foodDatabase } from '../data/foodDatabase';
 
@@ -7,6 +7,7 @@ const STORAGE_KEYS = {
   USER_SETTINGS: 'nutrition_tracker_user_settings',
   CUSTOM_FOODS: 'nutrition_tracker_custom_foods',
   ACHIEVEMENTS: 'nutrition_tracker_achievements',
+  BODY_STATS: 'trainright_body_stats',
 };
 
 // User Settings
@@ -381,4 +382,43 @@ export const isFoodNameDuplicate = (name: string, excludeId?: string): boolean =
   return allFoods.some(
     food => food.name.toLowerCase().trim() === nameLower && food.id !== excludeId
   );
+};
+
+// ─── Body Stats ──────────────────────────────────────────────────────────────
+
+export const getBodyStats = (): BodyStatEntry[] => {
+  const stored = localStorage.getItem(STORAGE_KEYS.BODY_STATS);
+  if (stored) return JSON.parse(stored) as BodyStatEntry[];
+  return [];
+};
+
+const _saveBodyStats = (entries: BodyStatEntry[]): void => {
+  localStorage.setItem(STORAGE_KEYS.BODY_STATS, JSON.stringify(entries));
+};
+
+export const saveBodyStatEntry = (entry: BodyStatEntry): void => {
+  const all = getBodyStats();
+  const idx = all.findIndex(e => e.id === entry.id);
+  if (idx >= 0) {
+    all[idx] = entry;
+  } else {
+    all.push(entry);
+  }
+  // keep sorted by date ascending
+  all.sort((a, b) => a.date.localeCompare(b.date));
+  _saveBodyStats(all);
+};
+
+export const deleteBodyStatEntry = (id: string): void => {
+  _saveBodyStats(getBodyStats().filter(e => e.id !== id));
+};
+
+export const updateBodyStatEntry = (id: string, updates: Partial<BodyStatEntry>): boolean => {
+  const all = getBodyStats();
+  const idx = all.findIndex(e => e.id === id);
+  if (idx === -1) return false;
+  all[idx] = { ...all[idx], ...updates };
+  all.sort((a, b) => a.date.localeCompare(b.date));
+  _saveBodyStats(all);
+  return true;
 };

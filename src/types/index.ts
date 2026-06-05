@@ -91,3 +91,17 @@ export interface DayStatus {
   status: 'met' | 'close' | 'missed' | 'future';
   progress: number; // percentage
 }
+
+export interface BodyStatEntry {
+  id: string;
+  date: string; // YYYY-MM-DD
+  weight?: number; // kg
+  bodyFat?: number; // %
+  waist?: number; // cm
+  chest?: number; // cm
+  hips?: number; // cm
+  leftArm?: number; // cm
+  rightArm?: number; // cm
+  neck?: number; // cm
+  notes?: string;
+}

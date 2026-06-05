@@ -10,7 +10,6 @@ import {
 import { WARMUP, TREADMILL_NOTE, PROGRAM_NAME } from '../data/program';
 import { suggestReadiness } from '../utils/health';
 import useRestTimer from '../hooks/useRestTimer';
-import { CoachDaily } from './Coach';
 import { getUserSettings } from '../utils/storage';
 
 interface TrainProps {
@@ -218,8 +217,6 @@ const Train = ({ selectedDate, onUpdate }: TrainProps) => {
         </div>
       </div>
 
-      <CoachDaily date={selectedDate} />
-
       {/* Warm-up */}
       <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow">
         <h3 className="font-bold text-gray-900 dark:text-white mb-2">Warm-up</h3>
@@ -256,7 +253,7 @@ const Train = ({ selectedDate, onUpdate }: TrainProps) => {
                     {ex.leftFocus && <span className="ml-2 text-xs font-semibold text-blue-500">left focus</span>}
                   </h3>
                   <div className="text-sm text-gray-600 dark:text-gray-300">
-                    {ex.adjustedSets} × {ex.repsSpec.replace(/^×\s*/, '')}{ex.adjustedSets !== ex.sets ? ' (reduced — yellow)' : ''} · {ex.equipment} · rest {ex.rest}{ex.rir ? ` · RIR ${ex.rir}` : ''}
+                    {ex.adjustedSets} × {ex.repsSpec}{ex.adjustedSets !== ex.sets ? ' (reduced — yellow)' : ''} · {ex.equipment} · rest {ex.rest}{ex.rir ? ` · RIR ${ex.rir}` : ''}
                   </div>
                   {ex.cues && <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">{ex.cues}</div>}
                   {(ex.regression || ex.progression) && (
