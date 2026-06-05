@@ -256,7 +256,7 @@ const Train = ({ selectedDate, onUpdate }: TrainProps) => {
                     {ex.leftFocus && <span className="ml-2 text-xs font-semibold text-blue-500">left focus</span>}
                   </h3>
                   <div className="text-sm text-gray-600 dark:text-gray-300">
-                    {ex.adjustedSets} × {ex.repsSpec}{ex.adjustedSets !== ex.sets ? ' (reduced — yellow)' : ''} · {ex.equipment} · rest {ex.rest}{ex.rir ? ` · RIR ${ex.rir}` : ''}
+                    {ex.adjustedSets} × {ex.repsSpec.replace(/^×\s*/, '')}{ex.adjustedSets !== ex.sets ? ' (reduced — yellow)' : ''} · {ex.equipment} · rest {ex.rest}{ex.rir ? ` · RIR ${ex.rir}` : ''}
                   </div>
                   {ex.cues && <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">{ex.cues}</div>}
                   {(ex.regression || ex.progression) && (

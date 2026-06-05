@@ -81,7 +81,8 @@ const Analytics = () => {
   // Progress percentages
   const caloriesPercent = Math.round((todayCalories / userSettings.targets.dailyCalories) * 100);
   const proteinPercent2 = Math.round((todayProtein / userSettings.targets.dailyProtein) * 100);
-  const stepsPercent = Math.round((todaySteps / 10000) * 100);
+  const stepGoal = 5000;
+  const stepsPercent = Math.round((todaySteps / stepGoal) * 100);
 
   return (
     <div className="p-6 space-y-6">
@@ -131,7 +132,7 @@ const Analytics = () => {
             <div className="flex justify-between mb-2">
               <span className="font-semibold">Steps</span>
               <span className="text-sm text-gray-600 dark:text-gray-400">
-                {todaySteps.toLocaleString()} / 10,000
+                {todaySteps.toLocaleString()} / {stepGoal.toLocaleString()}
               </span>
             </div>
             <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3 overflow-hidden">
@@ -226,10 +227,10 @@ const Analytics = () => {
             <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3 overflow-hidden">
               <div
                 className="bg-purple-500 h-3 transition-all duration-300"
-                style={{ width: `${Math.min(100, (avgSteps / 10000) * 100)}%` }}
+                style={{ width: `${Math.min(100, (avgSteps / 5000) * 100)}%` }}
               />
             </div>
-            <p className="text-xs text-gray-500 mt-1">Goal: 10,000 steps/day</p>
+            <p className="text-xs text-gray-500 mt-1">Goal: 5,000 steps/day</p>
           </div>
 
           {/* Pushup Days Completed */}
