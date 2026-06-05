@@ -9,6 +9,7 @@ import Analytics from './components/Analytics';
 import Fitness from './components/Fitness';
 import Train from './components/Train';
 import ProgramSettings from './components/ProgramSettings';
+import { CoachWeekly } from './components/Coach';
 import { getDailyEntry } from './utils/storage';
 import type { DailyEntry } from './types';
 import usePushupReminders from './hooks/usePushupReminders';
@@ -78,7 +79,12 @@ function App() {
         )}
 
         {view === 'train' && <Train selectedDate={selectedDate} onUpdate={refreshDailyEntry} />}
-        {view === 'analytics' && <Analytics />}
+        {view === 'analytics' && (
+          <div>
+            <CoachWeekly />
+            <Analytics />
+          </div>
+        )}
         {view === 'fitness' && <Fitness selectedDate={selectedDate} onUpdate={refreshDailyEntry} />}
 
         {view === 'settings' && (

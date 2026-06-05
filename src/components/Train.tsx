@@ -10,6 +10,7 @@ import {
 import { WARMUP, TREADMILL_NOTE, PROGRAM_NAME } from '../data/program';
 import { suggestReadiness } from '../utils/health';
 import useRestTimer from '../hooks/useRestTimer';
+import { CoachDaily } from './Coach';
 import { getUserSettings } from '../utils/storage';
 
 interface TrainProps {
@@ -216,6 +217,8 @@ const Train = ({ selectedDate, onUpdate }: TrainProps) => {
           Training-day nutrition: {targets.dailyCalories} kcal · P {targets.dailyProtein}g · C {targets.dailyCarbs}g · F {targets.dailyFats}g · Water 2.5–3 L
         </div>
       </div>
+
+      <CoachDaily date={selectedDate} />
 
       {/* Warm-up */}
       <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow">
