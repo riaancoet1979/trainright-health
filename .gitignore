@@ -1,0 +1,6 @@
+node_modules/
+dist/
+npm-install.log
+.garmin_tokens/
+.vite-temp/
+__pycache__/
