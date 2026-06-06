@@ -211,18 +211,17 @@ const BodyStats = () => {
     .filter(e => e.bodyFat !== undefined)
     .map(e => ({ label: format(new Date(e.date + 'T00:00:00'), 'dd MMM'), value: e.bodyFat! }));
 
-  const measurementDates = entries.filter(e => e.waist ?? e.chest ?? e.hips);
-  const waistPoints: ChartPoint[] = measurementDates
-    .filter(e => e.waist !== undefined)
-    .map(e => ({ label: format(new Date(e.date + 'T00:00:00'), 'dd MMM'), value: e.waist! }));
+  const mkPoints = (key: keyof BodyStatEntry) =>
+    entries
+      .filter(e => e[key] !== undefined && typeof e[key] === 'number')
+      .map(e => ({ label: format(new Date(e.date + 'T00:00:00'), 'dd MMM'), value: e[key] as number }));
 
-  const chestPoints: ChartPoint[] = measurementDates
-    .filter(e => e.chest !== undefined)
-    .map(e => ({ label: format(new Date(e.date + 'T00:00:00'), 'dd MMM'), value: e.chest! }));
-
-  const hipsPoints: ChartPoint[] = measurementDates
-    .filter(e => e.hips !== undefined)
-    .map(e => ({ label: format(new Date(e.date + 'T00:00:00'), 'dd MMM'), value: e.hips! }));
+  const waistPoints    = mkPoints('waist');
+  const chestPoints    = mkPoints('chest');
+  const hipsPoints     = mkPoints('hips');
+  const leftArmPoints  = mkPoints('leftArm');
+  const rightArmPoints = mkPoints('rightArm');
+  const neckPoints     = mkPoints('neck');
 
   // Latest entry for summary card
   const latest = entries.length > 0 ? entries[entries.length - 1] : null;
@@ -379,7 +378,7 @@ const BodyStats = () => {
             {[
               { key: 'weight' as const, label: 'Weight', show: weightPoints.length >= 2 },
               { key: 'bodyFat' as const, label: 'Body Fat', show: bodyFatPoints.length >= 2 },
-              { key: 'measurements' as const, label: 'Measurements', show: waistPoints.length >= 1 || chestPoints.length >= 1 || hipsPoints.length >= 1 },
+              { key: 'measurements' as const, label: 'Measurements', show: [waistPoints, chestPoints, hipsPoints, leftArmPoints, rightArmPoints, neckPoints].some(p => p.length >= 1) },
             ]
               .filter(t => t.show)
               .map(t => (
@@ -419,9 +418,12 @@ const BodyStats = () => {
           {activeChart === 'measurements' && (
             <div className="space-y-4">
               {[
-                { points: waistPoints, label: 'Waist', color: '#9333ea', textClass: 'text-purple-600 dark:text-purple-400' },
-                { points: chestPoints, label: 'Chest', color: '#16a34a', textClass: 'text-green-600 dark:text-green-400' },
-                { points: hipsPoints, label: 'Hips', color: '#db2777', textClass: 'text-pink-600 dark:text-pink-400' },
+                { points: waistPoints,    label: 'Waist',     color: '#9333ea', textClass: 'text-purple-600 dark:text-purple-400' },
+                { points: chestPoints,    label: 'Chest',     color: '#16a34a', textClass: 'text-green-600 dark:text-green-400' },
+                { points: hipsPoints,     label: 'Hips',      color: '#db2777', textClass: 'text-pink-600 dark:text-pink-400' },
+                { points: leftArmPoints,  label: 'Left Arm',  color: '#2563eb', textClass: 'text-blue-600 dark:text-blue-400' },
+                { points: rightArmPoints, label: 'Right Arm', color: '#7c3aed', textClass: 'text-violet-600 dark:text-violet-400' },
+                { points: neckPoints,     label: 'Neck',      color: '#0891b2', textClass: 'text-cyan-600 dark:text-cyan-400' },
               ].filter(m => m.points.length >= 1).map(m => (
                 <div key={m.label}>
                   <p className={`text-xs font-medium ${m.textClass} mb-1`}>{m.label}</p>
