@@ -152,6 +152,33 @@ export const exportFitnessData = (): string => {
   return JSON.stringify(fitnessOnly, null, 2);
 };
 
+export const importFitnessData = (
+  jsonString: string,
+  mode: 'merge' | 'replace' = 'merge'
+): { success: boolean; count: number; error?: string } => {
+  try {
+    const imported = JSON.parse(jsonString);
+    if (typeof imported !== 'object' || imported === null || Array.isArray(imported)) {
+      return { success: false, count: 0, error: 'Invalid fitness backup format. Expected an object keyed by date.' };
+    }
+    const all = mode === 'replace' ? {} : getAllDailyEntries();
+    let count = 0;
+    Object.keys(imported).forEach(dateKey => {
+      const fitnessData = imported[dateKey];
+      if (!fitnessData || typeof fitnessData !== 'object') return;
+      if (!all[dateKey]) {
+        all[dateKey] = getDailyEntry(dateKey);
+      }
+      all[dateKey].fitness = fitnessData;
+      count++;
+    });
+    localStorage.setItem(STORAGE_KEYS.DAILY_ENTRIES, JSON.stringify(all));
+    return { success: true, count };
+  } catch (e) {
+    return { success: false, count: 0, error: 'Failed to parse backup file. Make sure it is a valid fitness-data JSON.' };
+  }
+};
+
 export const resetAllFitnessData = (): void => {
   const all = getAllDailyEntries();
   Object.keys(all).forEach(k => {

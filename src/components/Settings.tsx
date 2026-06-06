@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { Settings as SettingsIcon, Save, Moon, Sun, Plus, Edit2, Trash2, Download, Upload, X, AlertTriangle } from 'lucide-react';
-import { getUserSettings, saveUserSettings, getCustomFoods, addCustomFood, updateCustomFood, deleteCustomFood, exportCustomFoods, importCustomFoods, isFoodNameDuplicate, exportFitnessData, resetAllFitnessData } from '../utils/storage';
+import { getUserSettings, saveUserSettings, getCustomFoods, addCustomFood, updateCustomFood, deleteCustomFood, exportCustomFoods, importCustomFoods, isFoodNameDuplicate, exportFitnessData, importFitnessData, resetAllFitnessData } from '../utils/storage';
 import type { FoodItem } from '../types';
 import { useTheme } from '../contexts/ThemeContext';
 
@@ -18,6 +18,7 @@ const Settings = ({ onSettingsSaved }: SettingsProps) => {
   const [editingFood, setEditingFood] = useState<FoodItem | null>(null);
   const [searchFilter, setSearchFilter] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const fitnessImportRef = useRef<HTMLInputElement>(null);
 
   // Food form state
   const [foodForm, setFoodForm] = useState({
@@ -318,7 +319,7 @@ const Settings = ({ onSettingsSaved }: SettingsProps) => {
               <p className="text-xs text-gray-500 mt-1">Default rest time between sets (used for the rest timer)</p>
             </div>
 
-          <div className="flex gap-2 items-center">
+          <div className="flex gap-2 items-center flex-wrap">
             <button
               onClick={() => {
                 try {
@@ -338,6 +339,38 @@ const Settings = ({ onSettingsSaved }: SettingsProps) => {
             >
               Export Fitness Data
             </button>
+
+            <button
+              onClick={() => fitnessImportRef.current?.click()}
+              className="btn-secondary px-3"
+            >
+              Import Fitness Backup
+            </button>
+            <input
+              ref={fitnessImportRef}
+              type="file"
+              accept=".json"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (ev) => {
+                  const content = ev.target?.result as string;
+                  const mode = confirm(
+                    'Restore mode:\n\nOK = Merge with existing fitness data (keeps nutrition logs)\nCancel = Replace all fitness data (overwrites existing)'
+                  ) ? 'merge' : 'replace';
+                  const result = importFitnessData(content, mode);
+                  if (result.success) {
+                    alert(`Successfully restored ${result.count} day${result.count !== 1 ? 's' : ''} of fitness data!`);
+                  } else {
+                    alert(`Restore failed: ${result.error}`);
+                  }
+                };
+                reader.readAsText(file);
+                if (fitnessImportRef.current) fitnessImportRef.current.value = '';
+              }}
+            />
 
             <button
               onClick={() => {
@@ -871,6 +904,7 @@ const Settings = ({ onSettingsSaved }: SettingsProps) => {
                     )}
                   </div>
                 </div>
+
 
                 {/* Nutrition Warning */}
                 {getNutritionWarning() && (
