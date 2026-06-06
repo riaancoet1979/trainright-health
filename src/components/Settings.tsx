@@ -1,8 +1,8 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import { Settings as SettingsIcon, Save, Moon, Sun, Plus, Edit2, Trash2, Download, Upload, X, AlertTriangle } from 'lucide-react';
 import { getUserSettings, saveUserSettings, getCustomFoods, addCustomFood, updateCustomFood, deleteCustomFood, exportCustomFoods, importCustomFoods, isFoodNameDuplicate, exportFitnessData, importFitnessData, resetAllFitnessData } from '../utils/storage';
 import type { FoodItem } from '../types';
-import { useTheme } from '../contexts/ThemeContext';
+import { useTheme } from '../contexts/useTheme';
 
 interface SettingsProps {
   onSettingsSaved: () => void;
@@ -43,11 +43,13 @@ const Settings = ({ onSettingsSaved }: SettingsProps) => {
     } catch (e) {}
   };
 
-  // keep input fields in sync when settings change externally
-  useEffect(() => {
-    setDailyCaloriesInput(String(settings.targets.dailyCalories ?? ''));
-    setDailyProteinInput(String(settings.targets.dailyProtein ?? ''));
-  }, [settings.targets.dailyCalories, settings.targets.dailyProtein]);
+  // M-02: the previous useEffect that mirrored settings → input state was a
+  // setState-in-effect pattern (eslint react-hooks/set-state-in-effect) that
+  // also created a redundant render. The settings are owned by this component
+  // and only changed through `setSettings` (which also rewrites the inputs
+  // directly via the handlers below); no external code mutates the targets in
+  // a way Settings.tsx needs to react to. Removing the effect keeps the input
+  // values in sync without the extra render cycle.
 
   const handleCaloriesInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const raw = e.target.value;

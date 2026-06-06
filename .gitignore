@@ -4,3 +4,11 @@ npm-install.log
 .garmin_tokens/
 .vite-temp/
 __pycache__/
+
+# Personal health data exported by garmin_sync.py — must never be committed
+# (would be deployed to public GitHub Pages). See audit/SECURITY_PRIVACY.md.
+public/garmin_health.json
+/garmin_health.json
+
+# User-local helper scripts (push_*.bat, fix_*.bat) — preserved but not tracked
+/*.local.bat

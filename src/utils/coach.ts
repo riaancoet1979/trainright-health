@@ -240,9 +240,13 @@ export const weeklyReview = (dateInWeek: Date | string): WeeklyReview => {
           .filter(([, l]) => l.exercises[ex.id]?.sets.some((s) => s.done))
           .slice(-2);
         if (instances.length < 2) continue;
+        // M-05: require ALL prescribed sets to be done at top-of-range, not
+        // `>= ex.sets - 1`. Previously a 4×8-12 exercise progressed after 3
+        // sets at 12 reps; the design rule is "all sets at the top of the
+        // range" so the off-by-one was a real bug.
         const allAtTop = instances.every(([, l]) => {
           const sets = l.exercises[ex.id].sets.filter((s) => s.done);
-          return sets.length >= ex.sets - 1 && sets.every((s) => {
+          return sets.length >= ex.sets && sets.every((s) => {
             const reps = parseInt(s.reps, 10);
             return !Number.isNaN(reps) && reps >= top;
           });

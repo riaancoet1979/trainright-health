@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback } from 'react';
 import { format } from 'date-fns';
-import { Trash2, Edit3, Scale, TrendingDown, TrendingUp, Minus } from 'lucide-react';
+import { Trash2, Edit3, Scale, TrendingDown, TrendingUp, Minus, ChevronDown, ChevronRight } from 'lucide-react';
 import {
   getBodyStats,
   saveBodyStatEntry,
@@ -23,13 +23,7 @@ interface MiniLineChartProps {
 }
 
 const MiniLineChart = ({ points, color, unit, height = 120 }: MiniLineChartProps) => {
-  if (points.length < 2) {
-    return (
-      <div className="flex items-center justify-center h-20 text-sm text-gray-400 dark:text-gray-500">
-        Add at least 2 entries to see a chart
-      </div>
-    );
-  }
+  if (points.length === 0) return null;
 
   const W = 320;
   const H = height;
@@ -40,9 +34,13 @@ const MiniLineChart = ({ points, color, unit, height = 120 }: MiniLineChartProps
   const values = points.map(p => p.value);
   const minVal = Math.min(...values);
   const maxVal = Math.max(...values);
-  const range = maxVal - minVal || 1;
+  // Pad the y-axis for a single point so the dot doesn't sit on the bottom line
+  const range = maxVal - minVal || Math.max(1, Math.abs(maxVal) * 0.1);
 
-  const toX = (i: number) => PAD.left + (i / (points.length - 1)) * innerW;
+  // Center the single point on the chart instead of dividing by zero
+  const toX = (i: number) => points.length === 1
+    ? PAD.left + innerW / 2
+    : PAD.left + (i / (points.length - 1)) * innerW;
   const toY = (v: number) => PAD.top + innerH - ((v - minVal) / range) * innerH;
 
   const pathD = points
@@ -133,6 +131,9 @@ const EMPTY_FORM = {
   leftArm: '',
   rightArm: '',
   neck: '',
+  thighL: '',
+  thighR: '',
+  shoulderWidth: '',
   notes: '',
 };
 
@@ -147,7 +148,9 @@ const BodyStats = () => {
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [prefilled, setPrefilled] = useState(false);
   const [activeChart, setActiveChart] = useState<'weight' | 'bodyFat' | 'measurements'>('weight');
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const setField = (key: keyof FormState, value: string) =>
     setForm(f => ({ ...f, [key]: value }));
@@ -156,6 +159,56 @@ const BodyStats = () => {
     setForm(EMPTY_FORM);
     setEditingId(null);
     setShowForm(false);
+    setPrefilled(false);
+  };
+
+  /**
+   * Return the most recent recorded value for a measurement key, scanning back
+   * through all entries (newest first). Lets us pre-fill the new-entry form
+   * even if the user's last few entries only logged weight — measurements
+   * change slowly enough that the most recent value is the right default.
+   */
+  const lastValue = useCallback((key: keyof BodyStatEntry): number | undefined => {
+    for (let i = entries.length - 1; i >= 0; i--) {
+      const v = entries[i][key];
+      if (typeof v === 'number') return v;
+    }
+    return undefined;
+  }, [entries]);
+
+  /** Open the form for a new entry, pre-filling measurement fields with the
+   *  most recent recorded values so it's a one-tap update of "what changed". */
+  const openNewEntry = () => {
+    const today = format(new Date(), 'yyyy-MM-dd');
+    const fromLast = (key: keyof BodyStatEntry): string => {
+      const v = lastValue(key);
+      return v !== undefined ? String(v) : '';
+    };
+    setForm({
+      date: today,
+      // Weight + body-fat change every weigh-in — leave blank to force fresh input.
+      weight: '',
+      bodyFat: '',
+      // Tape measurements change slowly — pre-fill from last recorded value.
+      waist:         fromLast('waist'),
+      chest:         fromLast('chest'),
+      hips:          fromLast('hips'),
+      leftArm:       fromLast('leftArm'),
+      rightArm:      fromLast('rightArm'),
+      neck:          fromLast('neck'),
+      thighL:        fromLast('thighL'),
+      thighR:        fromLast('thighR'),
+      shoulderWidth: fromLast('shoulderWidth'),
+      notes: '',
+    });
+    setEditingId(null);
+    setShowForm(true);
+    setPrefilled(entries.length > 0);
+  };
+
+  const clearForm = () => {
+    setForm({ ...EMPTY_FORM, date: form.date });
+    setPrefilled(false);
   };
 
   const handleSave = () => {
@@ -171,6 +224,9 @@ const BodyStats = () => {
       ...(form.leftArm !== '' && { leftArm: parseFloat(form.leftArm) }),
       ...(form.rightArm !== '' && { rightArm: parseFloat(form.rightArm) }),
       ...(form.neck !== '' && { neck: parseFloat(form.neck) }),
+      ...(form.thighL !== '' && { thighL: parseFloat(form.thighL) }),
+      ...(form.thighR !== '' && { thighR: parseFloat(form.thighR) }),
+      ...(form.shoulderWidth !== '' && { shoulderWidth: parseFloat(form.shoulderWidth) }),
       ...(form.notes.trim() !== '' && { notes: form.notes.trim() }),
     };
     saveBodyStatEntry(entry);
@@ -189,10 +245,14 @@ const BodyStats = () => {
       leftArm: e.leftArm !== undefined ? String(e.leftArm) : '',
       rightArm: e.rightArm !== undefined ? String(e.rightArm) : '',
       neck: e.neck !== undefined ? String(e.neck) : '',
+      thighL: e.thighL !== undefined ? String(e.thighL) : '',
+      thighR: e.thighR !== undefined ? String(e.thighR) : '',
+      shoulderWidth: e.shoulderWidth !== undefined ? String(e.shoulderWidth) : '',
       notes: e.notes ?? '',
     });
     setEditingId(e.id);
     setShowForm(true);
+    setPrefilled(false);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -216,12 +276,15 @@ const BodyStats = () => {
       .filter(e => e[key] !== undefined && typeof e[key] === 'number')
       .map(e => ({ label: format(new Date(e.date + 'T00:00:00'), 'dd MMM'), value: e[key] as number }));
 
-  const waistPoints    = mkPoints('waist');
-  const chestPoints    = mkPoints('chest');
-  const hipsPoints     = mkPoints('hips');
-  const leftArmPoints  = mkPoints('leftArm');
-  const rightArmPoints = mkPoints('rightArm');
-  const neckPoints     = mkPoints('neck');
+  const waistPoints         = mkPoints('waist');
+  const chestPoints         = mkPoints('chest');
+  const hipsPoints          = mkPoints('hips');
+  const leftArmPoints       = mkPoints('leftArm');
+  const rightArmPoints      = mkPoints('rightArm');
+  const neckPoints          = mkPoints('neck');
+  const thighLPoints        = mkPoints('thighL');
+  const thighRPoints        = mkPoints('thighR');
+  const shoulderWidthPoints = mkPoints('shoulderWidth');
 
   // Latest entry for summary card
   const latest = entries.length > 0 ? entries[entries.length - 1] : null;
@@ -236,7 +299,13 @@ const BodyStats = () => {
             <Scale className="w-5 h-5" /> Body Stats
           </h3>
           <button
-            onClick={() => { setShowForm(s => !s); if (editingId) resetForm(); }}
+            onClick={() => {
+              if (showForm) {
+                resetForm();
+              } else {
+                openNewEntry();
+              }
+            }}
             className="btn-primary px-4 py-2 text-sm"
           >
             {showForm && !editingId ? 'Cancel' : '+ Log Entry'}
@@ -287,7 +356,22 @@ const BodyStats = () => {
       {/* ── Entry form ── */}
       {showForm && (
         <div className="card space-y-4">
-          <h4 className="font-semibold text-base">{editingId ? 'Edit Entry' : 'Log Body Stats'}</h4>
+          <div className="flex items-center justify-between">
+            <h4 className="font-semibold text-base">{editingId ? 'Edit Entry' : 'Log Body Stats'}</h4>
+            {prefilled && (
+              <button
+                onClick={clearForm}
+                className="text-xs text-gray-500 dark:text-gray-400 underline hover:text-gray-700 dark:hover:text-gray-200"
+              >
+                Clear pre-fill
+              </button>
+            )}
+          </div>
+          {prefilled && (
+            <p className="text-xs text-gray-500 dark:text-gray-400 -mt-2">
+              Measurements pre-filled from your last entry — adjust only what changed.
+            </p>
+          )}
 
           <div>
             <label className="block text-sm font-medium mb-1">Date</label>
@@ -350,6 +434,24 @@ const BodyStats = () => {
                 value={form.rightArm} onChange={e => setField('rightArm', e.target.value)}
                 className="input-field" />
             </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Left Thigh</label>
+              <input type="number" step="0.5" min="0" placeholder="cm"
+                value={form.thighL} onChange={e => setField('thighL', e.target.value)}
+                className="input-field" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Right Thigh</label>
+              <input type="number" step="0.5" min="0" placeholder="cm"
+                value={form.thighR} onChange={e => setField('thighR', e.target.value)}
+                className="input-field" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Shoulder Width</label>
+              <input type="number" step="0.5" min="0" placeholder="cm"
+                value={form.shoulderWidth} onChange={e => setField('shoulderWidth', e.target.value)}
+                className="input-field" />
+            </div>
           </div>
 
           <div>
@@ -369,16 +471,17 @@ const BodyStats = () => {
       )}
 
       {/* ── Progress charts ── */}
-      {entries.length >= 2 && (
+      {entries.length >= 1 && (
         <div className="card">
           <h4 className="font-semibold mb-3">Progress Charts</h4>
 
-          {/* Tab switcher */}
+          {/* Tab switcher — measurements tab is always available so the user
+              sees a chart per section even with a single entry. */}
           <div className="flex gap-2 mb-4">
             {[
-              { key: 'weight' as const, label: 'Weight', show: weightPoints.length >= 2 },
-              { key: 'bodyFat' as const, label: 'Body Fat', show: bodyFatPoints.length >= 2 },
-              { key: 'measurements' as const, label: 'Measurements', show: [waistPoints, chestPoints, hipsPoints, leftArmPoints, rightArmPoints, neckPoints].some(p => p.length >= 1) },
+              { key: 'weight' as const,       label: 'Weight',       show: weightPoints.length >= 1 },
+              { key: 'bodyFat' as const,      label: 'Body Fat',     show: bodyFatPoints.length >= 1 },
+              { key: 'measurements' as const, label: 'Measurements', show: [waistPoints, chestPoints, hipsPoints, leftArmPoints, rightArmPoints, neckPoints, thighLPoints, thighRPoints, shoulderWidthPoints].some(p => p.length >= 1) },
             ]
               .filter(t => t.show)
               .map(t => (
@@ -395,90 +498,171 @@ const BodyStats = () => {
               ))}
           </div>
 
-          {activeChart === 'weight' && weightPoints.length >= 2 && (
+          {activeChart === 'weight' && weightPoints.length >= 1 && (
             <div>
               <MiniLineChart points={weightPoints} color="#3b82f6" unit="kg" height={130} />
               <div className="flex justify-between text-xs text-gray-500 mt-1 px-8">
                 <span>{weightPoints[0].value} kg</span>
                 <span className="font-medium">Latest: {weightPoints[weightPoints.length - 1].value} kg</span>
               </div>
+              {weightPoints.length === 1 && (
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-2 text-center">
+                  Log another entry to see the trend.
+                </p>
+              )}
             </div>
           )}
 
-          {activeChart === 'bodyFat' && bodyFatPoints.length >= 2 && (
+          {activeChart === 'bodyFat' && bodyFatPoints.length >= 1 && (
             <div>
               <MiniLineChart points={bodyFatPoints} color="#f97316" unit="%" height={130} />
               <div className="flex justify-between text-xs text-gray-500 mt-1 px-8">
                 <span>{bodyFatPoints[0].value}%</span>
                 <span className="font-medium">Latest: {bodyFatPoints[bodyFatPoints.length - 1].value}%</span>
               </div>
+              {bodyFatPoints.length === 1 && (
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-2 text-center">
+                  Log another entry to see the trend.
+                </p>
+              )}
             </div>
           )}
 
           {activeChart === 'measurements' && (
             <div className="space-y-4">
               {[
-                { points: waistPoints,    label: 'Waist',     color: '#9333ea', textClass: 'text-purple-600 dark:text-purple-400' },
-                { points: chestPoints,    label: 'Chest',     color: '#16a34a', textClass: 'text-green-600 dark:text-green-400' },
-                { points: hipsPoints,     label: 'Hips',      color: '#db2777', textClass: 'text-pink-600 dark:text-pink-400' },
-                { points: leftArmPoints,  label: 'Left Arm',  color: '#2563eb', textClass: 'text-blue-600 dark:text-blue-400' },
-                { points: rightArmPoints, label: 'Right Arm', color: '#7c3aed', textClass: 'text-violet-600 dark:text-violet-400' },
-                { points: neckPoints,     label: 'Neck',      color: '#0891b2', textClass: 'text-cyan-600 dark:text-cyan-400' },
-              ].filter(m => m.points.length >= 1).map(m => (
-                <div key={m.label}>
-                  <p className={`text-xs font-medium ${m.textClass} mb-1`}>{m.label}</p>
-                  {m.points.length >= 2 ? (
-                    <MiniLineChart points={m.points} color={m.color} unit="cm" height={100} />
-                  ) : (
-                    <div className="flex items-center gap-3 px-2 py-3 bg-gray-50 dark:bg-gray-700/40 rounded-lg">
-                      <span className="text-2xl font-bold" style={{ color: m.color }}>{m.points[0].value}</span>
-                      <span className="text-sm text-gray-500 dark:text-gray-400">cm &mdash; {m.points[0].label} (add a 2nd entry to see trend)</span>
+                { points: waistPoints,         label: 'Waist',          color: '#9333ea', textClass: 'text-purple-600 dark:text-purple-400' },
+                { points: chestPoints,         label: 'Chest',          color: '#16a34a', textClass: 'text-green-600 dark:text-green-400' },
+                { points: hipsPoints,          label: 'Hips',           color: '#db2777', textClass: 'text-pink-600 dark:text-pink-400' },
+                { points: shoulderWidthPoints, label: 'Shoulder Width', color: '#0ea5e9', textClass: 'text-sky-600 dark:text-sky-400' },
+                { points: leftArmPoints,       label: 'Left Arm',       color: '#2563eb', textClass: 'text-blue-600 dark:text-blue-400' },
+                { points: rightArmPoints,      label: 'Right Arm',      color: '#7c3aed', textClass: 'text-violet-600 dark:text-violet-400' },
+                { points: thighLPoints,        label: 'Left Thigh',     color: '#ca8a04', textClass: 'text-yellow-600 dark:text-yellow-400' },
+                { points: thighRPoints,        label: 'Right Thigh',    color: '#ea580c', textClass: 'text-orange-600 dark:text-orange-400' },
+                { points: neckPoints,          label: 'Neck',           color: '#0891b2', textClass: 'text-cyan-600 dark:text-cyan-400' },
+              ].filter(m => m.points.length >= 1).map(m => {
+                const first = m.points[0];
+                const last  = m.points[m.points.length - 1];
+                return (
+                  <div key={m.label}>
+                    <div className="flex items-baseline justify-between mb-1">
+                      <p className={`text-xs font-medium ${m.textClass}`}>{m.label}</p>
+                      <span className="text-xs text-gray-500 dark:text-gray-400">
+                        {last.value} cm{m.points.length >= 2 && ` · Δ ${(last.value - first.value).toFixed(1)} cm`}
+                      </span>
                     </div>
-                  )}
-                </div>
-              ))}
+                    <MiniLineChart points={m.points} color={m.color} unit="cm" height={100} />
+                    {m.points.length === 1 && (
+                      <p className="text-xs text-gray-400 dark:text-gray-500 mt-1 text-center">
+                        1 entry on {first.label} — log another to see a trend line.
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
       )}
 
-      {/* ── History list ── */}
+      {/* ── History list ──
+          Each row is collapsible: tap the header to see every stat recorded
+          on that date in a properly formatted detail panel (weight, body fat,
+          all six measurements, notes). The compact summary stays on screen
+          when collapsed so the user can scan dates quickly. */}
       {entries.length > 0 && (
         <div className="card">
           <h4 className="font-semibold mb-3">History ({entries.length} {entries.length === 1 ? 'entry' : 'entries'})</h4>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Tap a date to see every stat from that day.</p>
           <ul className="space-y-2">
-            {[...entries].reverse().map(e => (
-              <li key={e.id}
-                className="flex items-start justify-between p-3 rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700"
-              >
-                <div className="flex-1 min-w-0">
-                  <div className="font-medium text-sm">
-                    {format(new Date(e.date + 'T00:00:00'), 'EEE, d MMM yyyy')}
+            {[...entries].reverse().map(e => {
+              const isOpen = expandedId === e.id;
+              const detail: Array<{ label: string; value: string; color: string }> = [];
+              if (e.weight        !== undefined) detail.push({ label: 'Weight',         value: `${e.weight} kg`,         color: 'text-blue-600 dark:text-blue-400' });
+              if (e.bodyFat       !== undefined) detail.push({ label: 'Body Fat',       value: `${e.bodyFat} %`,         color: 'text-orange-600 dark:text-orange-400' });
+              if (e.waist         !== undefined) detail.push({ label: 'Waist',          value: `${e.waist} cm`,          color: 'text-purple-600 dark:text-purple-400' });
+              if (e.chest         !== undefined) detail.push({ label: 'Chest',          value: `${e.chest} cm`,          color: 'text-green-600 dark:text-green-400' });
+              if (e.hips          !== undefined) detail.push({ label: 'Hips',           value: `${e.hips} cm`,           color: 'text-pink-600 dark:text-pink-400' });
+              if (e.shoulderWidth !== undefined) detail.push({ label: 'Shoulder Width', value: `${e.shoulderWidth} cm`,  color: 'text-sky-600 dark:text-sky-400' });
+              if (e.leftArm       !== undefined) detail.push({ label: 'Left Arm',       value: `${e.leftArm} cm`,        color: 'text-blue-600 dark:text-blue-400' });
+              if (e.rightArm      !== undefined) detail.push({ label: 'Right Arm',      value: `${e.rightArm} cm`,       color: 'text-violet-600 dark:text-violet-400' });
+              if (e.thighL        !== undefined) detail.push({ label: 'Left Thigh',     value: `${e.thighL} cm`,         color: 'text-yellow-600 dark:text-yellow-400' });
+              if (e.thighR        !== undefined) detail.push({ label: 'Right Thigh',    value: `${e.thighR} cm`,         color: 'text-orange-600 dark:text-orange-400' });
+              if (e.neck          !== undefined) detail.push({ label: 'Neck',           value: `${e.neck} cm`,           color: 'text-cyan-600 dark:text-cyan-400' });
+
+              return (
+                <li key={e.id}
+                  className="rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 overflow-hidden"
+                >
+                  {/* Header row — clickable to expand */}
+                  <div className="flex items-start justify-between p-3">
+                    <button
+                      type="button"
+                      onClick={() => setExpandedId(isOpen ? null : e.id)}
+                      className="flex-1 min-w-0 text-left"
+                      aria-expanded={isOpen}
+                      aria-controls={`bodystat-detail-${e.id}`}
+                    >
+                      <div className="font-medium text-sm flex items-center gap-1">
+                        {isOpen
+                          ? <ChevronDown className="w-4 h-4 text-gray-400" />
+                          : <ChevronRight className="w-4 h-4 text-gray-400" />}
+                        {format(new Date(e.date + 'T00:00:00'), 'EEE, d MMM yyyy')}
+                        <span className="ml-2 text-xs text-gray-400 font-normal">
+                          {detail.length} stat{detail.length === 1 ? '' : 's'}
+                        </span>
+                      </div>
+                      {!isOpen && (
+                        <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5">
+                          {e.weight !== undefined && <span>⚖️ {e.weight} kg</span>}
+                          {e.bodyFat !== undefined && <span>🔥 {e.bodyFat}% BF</span>}
+                          {e.waist !== undefined && <span>Waist {e.waist} cm</span>}
+                          {e.chest !== undefined && <span>Chest {e.chest} cm</span>}
+                          {e.hips !== undefined && <span>Hips {e.hips} cm</span>}
+                          {e.shoulderWidth !== undefined && <span>Sh {e.shoulderWidth} cm</span>}
+                          {e.leftArm !== undefined && <span>L.Arm {e.leftArm} cm</span>}
+                          {e.rightArm !== undefined && <span>R.Arm {e.rightArm} cm</span>}
+                          {e.thighL !== undefined && <span>L.Thigh {e.thighL} cm</span>}
+                          {e.thighR !== undefined && <span>R.Thigh {e.thighR} cm</span>}
+                          {e.neck !== undefined && <span>Neck {e.neck} cm</span>}
+                        </div>
+                      )}
+                    </button>
+                    <div className="flex gap-2 ml-3 flex-shrink-0">
+                      <button onClick={() => handleEdit(e)} className="text-gray-500 hover:text-gray-800 dark:hover:text-gray-200" aria-label="Edit entry">
+                        <Edit3 className="w-4 h-4" />
+                      </button>
+                      <button onClick={() => handleDelete(e.id)} className="text-red-500 hover:text-red-700" aria-label="Delete entry">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
-                  <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5">
-                    {e.weight !== undefined && <span>⚖️ {e.weight} kg</span>}
-                    {e.bodyFat !== undefined && <span>🔥 {e.bodyFat}% BF</span>}
-                    {e.waist !== undefined && <span>Waist {e.waist} cm</span>}
-                    {e.chest !== undefined && <span>Chest {e.chest} cm</span>}
-                    {e.hips !== undefined && <span>Hips {e.hips} cm</span>}
-                    {e.leftArm !== undefined && <span>L.Arm {e.leftArm} cm</span>}
-                    {e.rightArm !== undefined && <span>R.Arm {e.rightArm} cm</span>}
-                    {e.neck !== undefined && <span>Neck {e.neck} cm</span>}
-                  </div>
-                  {e.notes && (
-                    <div className="text-xs text-gray-400 dark:text-gray-500 mt-1 italic">{e.notes}</div>
+
+                  {/* Detail panel — every stat recorded that day */}
+                  {isOpen && (
+                    <div id={`bodystat-detail-${e.id}`} className="px-3 pb-3 pt-1 border-t border-gray-200 dark:border-gray-700">
+                      {detail.length === 0 ? (
+                        <p className="text-sm text-gray-500 italic">No stats recorded on this date.</p>
+                      ) : (
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-2">
+                          {detail.map(d => (
+                            <div key={d.label} className="rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-2">
+                              <div className="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400">{d.label}</div>
+                              <div className={`text-base font-semibold ${d.color}`}>{d.value}</div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {e.notes && (
+                        <div className="mt-3 text-xs text-gray-600 dark:text-gray-300 italic border-l-2 border-gray-300 dark:border-gray-600 pl-2">
+                          "{e.notes}"
+                        </div>
+                      )}
+                    </div>
                   )}
-                </div>
-                <div className="flex gap-2 ml-3 flex-shrink-0">
-                  <button onClick={() => handleEdit(e)} className="text-gray-500 hover:text-gray-800 dark:hover:text-gray-200">
-                    <Edit3 className="w-4 h-4" />
-                  </button>
-                  <button onClick={() => handleDelete(e.id)} className="text-red-500 hover:text-red-700">
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              </li>
-            ))}
+                </li>
+              );
+            })}
           </ul>
         </div>
       )}

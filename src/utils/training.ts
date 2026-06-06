@@ -6,9 +6,11 @@
 
 import { format } from 'date-fns';
 import { saveBodyStatEntry, getBodyStats } from './storage';
+import type { BodyStatEntry } from '../types';
 import type {
   TrainingData, SessionLog, DayKey, Readiness, ProgramDay,
   ProgramExercise, MacroTargets, DayTypeTargets, BodyMetric, LoggedSet,
+  RedFlagState,
 } from '../types/training';
 import { PHASES, getPhaseForWeek, DEFAULT_DAY_TYPE_TARGETS } from '../data/program';
 import { getUserSettings, saveUserSettings } from './storage';
@@ -99,11 +101,111 @@ export const getSessionForDate = (date: Date | string): ResolvedSession | null =
 export const isTrainingDay = (date: Date | string): boolean =>
   getSessionForDate(date) !== null;
 
+// ── Red-flag enforcement (H-02) ──
+/**
+ * Return true when any acute red-flag symptom is set on the session log and the
+ * user has not explicitly overridden with clinician guidance. The Train tab
+ * uses this to force RED readiness regardless of the wearable suggestion.
+ */
+export const hasActiveRedFlag = (rf: RedFlagState | undefined): boolean => {
+  if (!rf) return false;
+  if (rf.clinicianOverride) return false;
+  return Boolean(rf.chestPain || rf.dizziness || rf.breathlessness || rf.illness);
+};
+
+/** Apply red-flag override on top of the user's chosen readiness. */
+export const effectiveReadiness = (
+  picked: Readiness,
+  redFlags: RedFlagState | undefined,
+): Readiness => (hasActiveRedFlag(redFlags) ? 'red' : picked);
+
+// ── Prerequisite evaluation (H-03) ──
+const topOfRange = (repsSpec: string): number | null => {
+  const m = repsSpec.match(/(\d+)\s*[–-]\s*(\d+)/);
+  if (m) return parseInt(m[2], 10);
+  const single = repsSpec.match(/×\s*(\d+)/);
+  if (single) return parseInt(single[1], 10);
+  return null;
+};
+
+/**
+ * Decide whether the user has met the prerequisite for an exercise. Looks at
+ * the last 2 logged sessions of `sourceExerciseId` strictly before `beforeDate`
+ * and returns true only if every set in both sessions is marked `done` AND
+ * meets the top of the source exercise's rep range.
+ *
+ * Returns true when no prerequisite is defined (so existing exercises are
+ * unaffected) and when the program does not contain the source exercise.
+ */
+export const meetsPrerequisite = (
+  ex: ProgramExercise,
+  beforeDate: Date | string,
+): boolean => {
+  if (!ex.prerequisite) return true;
+  const td = getTrainingData();
+  const before = dateKey(beforeDate);
+  // Find the source exercise definition anywhere in the program — we need its
+  // sets and repsSpec to know what "top of range" means.
+  let sourceDef: ProgramExercise | undefined;
+  for (const phase of PHASES) {
+    for (const day of phase.days) {
+      const found = day.exercises.find((e) => e.id === ex.prerequisite!.sourceExerciseId);
+      if (found) { sourceDef = found; break; }
+    }
+    if (sourceDef) break;
+  }
+  if (!sourceDef) return true; // unknown source — fail open, don't block silently
+  const requiredTop = topOfRange(sourceDef.repsSpec);
+  if (requiredTop === null) return true;
+  const requiredSets = sourceDef.sets;
+
+  const candidates = Object.entries(td.logs)
+    .filter(([d, l]) => d < before && l.exercises[ex.prerequisite!.sourceExerciseId])
+    .sort((a, b) => b[0].localeCompare(a[0])) // newest first
+    .slice(0, 2);
+  if (candidates.length < 2) return false;
+  return candidates.every(([, log]) => {
+    const sets = log.exercises[ex.prerequisite!.sourceExerciseId].sets;
+    const doneSets = sets.filter((s) => s.done);
+    if (doneSets.length < requiredSets) return false;
+    return doneSets.every((s) => {
+      const reps = parseInt(s.reps, 10);
+      return !Number.isNaN(reps) && reps >= requiredTop;
+    });
+  });
+};
+
+/** Find an exercise definition anywhere in the program by id. */
+const findExerciseInProgram = (id: string): ProgramExercise | undefined => {
+  for (const phase of PHASES) {
+    for (const day of phase.days) {
+      const ex = day.exercises.find((e) => e.id === id);
+      if (ex) return ex;
+    }
+  }
+  return undefined;
+};
+
+/**
+ * Apply prerequisite gating: where unmet, swap the exercise for its fallback
+ * regression and tag it with `prerequisiteUnmet` so the UI can explain why.
+ */
+export const applyPrerequisites = (
+  exercises: ProgramExercise[],
+  beforeDate: Date | string,
+): Array<ProgramExercise & { prerequisiteUnmet?: string }> => exercises.map((ex) => {
+  if (!ex.prerequisite || meetsPrerequisite(ex, beforeDate)) return ex;
+  const fallback = findExerciseInProgram(ex.prerequisite.fallbackExerciseId);
+  if (!fallback) return { ...ex, prerequisiteUnmet: ex.prerequisite.description };
+  return { ...fallback, prerequisiteUnmet: ex.prerequisite.description };
+});
+
 // ── Readiness adjustment ──
 export interface AdjustedExercise extends ProgramExercise {
   adjustedSets: number;
   skipped: boolean;
   skipReason?: string;
+  prerequisiteUnmet?: string;
 }
 
 /**
@@ -244,18 +346,56 @@ export const getTargetsForDate = (date: Date | string): MacroTargets => {
 };
 
 // ── Legacy TrainRight (trainright_v1) migration ──
-interface LegacySet { weight?: string | number; reps?: string | number; done?: boolean }
+interface LegacySet {
+  weight?: string | number;
+  reps?: string | number;
+  done?: boolean;
+  // Per-side fields used by older TrainRight builds for asymmetric exercises
+  // (single-arm row, dead bug, etc.). When present, we collapse them into the
+  // canonical weight/reps/done by preferring the right side (typically the
+  // dominant side) and falling back to the left.
+  leftWeight?: string | number;
+  leftReps?: string | number;
+  leftDone?: boolean;
+  rightWeight?: string | number;
+  rightReps?: string | number;
+  rightDone?: boolean;
+}
 interface LegacyExLog { sets?: LegacySet[] }
 interface LegacyLog {
   weekNum?: number; dayKey?: string; phase?: number;
   completed?: boolean; notes?: string;
   exercises?: Record<string, LegacyExLog>;
 }
+interface LegacyBodyMetric {
+  date?: string;
+  weight?: number | string;
+  bfp?: number | string;
+  waist?: number | string;
+  chest?: number | string;
+  hips?: number | string;
+  neck?: number | string;
+  // Per-side circumferences in older backups
+  leftArmCirc?: number | string;
+  rightArmCirc?: number | string;
+  // Tape measurements only in older backups
+  thighL?: number | string;
+  thighR?: number | string;
+  shoulderWidth?: number | string;
+}
 interface LegacyData {
   profile?: unknown;
-  bodyMetrics?: Array<{ date?: string; weight?: number | string; bfp?: number | string; waist?: number | string; chest?: number | string }>;
+  bodyMetrics?: LegacyBodyMetric[];
   logs?: Record<string, LegacyLog>;
 }
+
+/** Parse a legacy value (number or numeric string) into a number, or undefined
+ *  when the value is missing / empty / unparseable. Treats 0 as a real value. */
+const toNum = (v: unknown): number | undefined => {
+  if (v === undefined || v === null || v === '') return undefined;
+  const n = typeof v === 'number' ? v : parseFloat(String(v));
+  return Number.isFinite(n) ? n : undefined;
+};
 
 export interface MigrationResult {
   sessionsImported: number;
@@ -278,12 +418,37 @@ export const importTrainRightBackup = (json: string): MigrationResult => {
       const exercises: Record<string, { sets: LoggedSet[] }> = {};
       let hasData = false;
       for (const [exId, exLog] of Object.entries(log.exercises ?? {})) {
-        const sets: LoggedSet[] = (exLog.sets ?? []).map((s) => ({
-          weight: String(s.weight ?? ''),
-          reps: String(s.reps ?? ''),
-          done: Boolean(s.done),
-        }));
-        if (sets.some((s) => s.done || s.weight !== '' || s.reps !== '')) {
+        const sets: LoggedSet[] = (exLog.sets ?? []).map((s) => {
+          // Collapse per-side data into canonical fields. Prefer right side
+          // (typically dominant); fall back to left. The original per-side
+          // values are preserved as optional fields so a future UI pass can
+          // render them without re-importing.
+          const rightW = s.rightWeight ?? s.weight;
+          const rightR = s.rightReps ?? s.reps;
+          const rightD = s.rightDone ?? s.done;
+          const canonWeight = String(rightW ?? s.leftWeight ?? '');
+          const canonReps   = String(rightR ?? s.leftReps   ?? '');
+          const canonDone   = Boolean(rightD ?? s.leftDone  ?? false);
+          const out: LoggedSet = {
+            weight: canonWeight,
+            reps:   canonReps,
+            done:   canonDone,
+          };
+          if (s.leftWeight !== undefined)  out.leftWeight  = String(s.leftWeight);
+          if (s.leftReps   !== undefined)  out.leftReps    = String(s.leftReps);
+          if (s.leftDone   !== undefined)  out.leftDone    = Boolean(s.leftDone);
+          if (s.rightWeight !== undefined) out.rightWeight = String(s.rightWeight);
+          if (s.rightReps   !== undefined) out.rightReps   = String(s.rightReps);
+          if (s.rightDone   !== undefined) out.rightDone   = Boolean(s.rightDone);
+          return out;
+        });
+        // A set counts as "has data" when it has any canonical OR per-side info
+        const hasSetData = (s: LoggedSet) =>
+          s.done || s.weight !== '' || s.reps !== '' ||
+          s.leftDone || s.rightDone ||
+          s.leftWeight !== undefined || s.rightWeight !== undefined ||
+          s.leftReps !== undefined   || s.rightReps !== undefined;
+        if (sets.some(hasSetData)) {
           exercises[exId] = { sets };
           hasData = true;
         }
@@ -306,33 +471,54 @@ export const importTrainRightBackup = (json: string): MigrationResult => {
   if (legacy.bodyMetrics) {
     for (const m of legacy.bodyMetrics) {
       if (!m.date) continue;
-      const w = typeof m.weight === 'string' ? parseFloat(m.weight) : m.weight;
-      if (w === undefined || Number.isNaN(w) || w === 0) continue;
-      if (!d.bodyMetrics.some((x) => x.date === m.date)) {
+      const w = toNum(m.weight);
+      // Older builds sometimes wrote weight=0 as a "no weight recorded" sentinel.
+      // Preserve that skip rule (matches existing migration test) but also drop
+      // entries that have neither weight nor any tape measurement.
+      if (w === 0) continue;
+      const anyMeasure = [m.bfp, m.waist, m.chest, m.hips, m.neck,
+        m.leftArmCirc, m.rightArmCirc, m.thighL, m.thighR, m.shoulderWidth]
+        .some((v) => toNum(v) !== undefined);
+      if (w === undefined && !anyMeasure) continue;
+      const existing = getBodyStats();
+      const alreadyOnSameDate = d.bodyMetrics.some((x) => x.date === m.date);
+      const alreadyInBodyStore = existing.some((e) => e.date === m.date);
+
+      if (!alreadyOnSameDate) {
+        // Internal training-store metric (only stores the older 4-field shape;
+        // keep backwards compatible — extra fields live in body-stats store).
         d.bodyMetrics.push({
           date: m.date,
-          weight: w,
-          bfp: typeof m.bfp === 'string' ? parseFloat(m.bfp) || '' : m.bfp ?? '',
-          waist: typeof m.waist === 'string' ? parseFloat(m.waist) || '' : m.waist ?? '',
-          chest: typeof m.chest === 'string' ? parseFloat(m.chest) || '' : m.chest ?? '',
+          weight: w ?? '',
+          bfp: toNum(m.bfp) ?? '',
+          waist: toNum(m.waist) ?? '',
+          chest: toNum(m.chest) ?? '',
         });
-        // Also write to the BodyStats component's store (trainright_body_stats)
-        const existing = getBodyStats();
-        if (!existing.some((e) => e.date === m.date)) {
-          const bf = typeof m.bfp === 'string' ? parseFloat(m.bfp) : m.bfp;
-          const ws = typeof m.waist === 'string' ? parseFloat(m.waist) : m.waist;
-          const ch = typeof m.chest === 'string' ? parseFloat(m.chest) : m.chest;
-          saveBodyStatEntry({
-            id: `body-legacy-${m.date}-${Math.random().toString(36).slice(2, 6)}`,
-            date: m.date,
-            weight: w,
-            ...(bf && !isNaN(bf) ? { bodyFat: bf } : {}),
-            ...(ws && !isNaN(ws) ? { waist: ws } : {}),
-            ...(ch && !isNaN(ch) ? { chest: ch } : {}),
-          });
-        }
-        metricsImported++;
       }
+      // Always upsert the richer body-stats entry — captures every field this
+      // backup format carries (arm circumferences, thighs, shoulder width).
+      if (!alreadyInBodyStore) {
+        const entry: BodyStatEntry = {
+          id: `body-legacy-${m.date}-${Math.random().toString(36).slice(2, 6)}`,
+          date: m.date,
+        };
+        const set = <K extends keyof BodyStatEntry>(k: K, v: number | undefined) => {
+          if (v !== undefined) (entry as unknown as Record<string, unknown>)[k] = v;
+        };
+        set('weight',        w);
+        set('bodyFat',       toNum(m.bfp));
+        set('waist',         toNum(m.waist));
+        set('chest',         toNum(m.chest));
+        set('hips',          toNum(m.hips));
+        set('neck',          toNum(m.neck));
+        set('leftArm',       toNum(m.leftArmCirc));
+        set('rightArm',      toNum(m.rightArmCirc));
+        set('thighL',        toNum(m.thighL));
+        set('thighR',        toNum(m.thighR));
+        set('shoulderWidth', toNum(m.shoulderWidth));
+        saveBodyStatEntry(entry);
+      }
+      if (!alreadyOnSameDate || !alreadyInBodyStore) metricsImported++;
     }
     d.bodyMetrics.sort((a, b) => a.date.localeCompare(b.date));
   }

@@ -1,16 +1,22 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { format } from 'date-fns';
 import { Dumbbell, CheckCircle2, Circle, AlertTriangle, Scale, Play } from 'lucide-react';
-import type { Readiness } from '../types/training';
+import type { Readiness, RedFlagState } from '../types/training';
 import {
   getSessionForDate, getSessionLog, updateSessionLog, adjustForReadiness,
+  applyPrerequisites, effectiveReadiness,
   getLastExerciseLog, setProgramStartDate, getTrainingData, addBodyMetric,
   latestBodyweight, getTargetsForDate, dateKey,
 } from '../utils/training';
 import { WARMUP, TREADMILL_NOTE, PROGRAM_NAME } from '../data/program';
-import { suggestReadiness } from '../utils/health';
+import { suggestReadiness, lastSyncLabel, isHealthDataStale } from '../utils/health';
 import useRestTimer from '../hooks/useRestTimer';
+import { CoachDaily } from './Coach';
+import RedFlagChecklist from './RedFlagChecklist';
 import { getUserSettings } from '../utils/storage';
+
+const BODYWEIGHT_MIN_KG = 20;
+const BODYWEIGHT_MAX_KG = 300;
 
 interface TrainProps {
   selectedDate: Date;
@@ -33,13 +39,13 @@ const Train = ({ selectedDate, onUpdate }: TrainProps) => {
   const log = getSessionLog(selectedDate);
   const key = dateKey(selectedDate);
 
-  const readiness: Readiness = log?.readiness ?? 'green';
+  const pickedReadiness: Readiness = log?.readiness ?? 'green';
+  const redFlags: RedFlagState | undefined = log?.redFlags;
+  // H-02: any unmitigated acute symptom forces RED regardless of picker / Garmin.
+  const readiness: Readiness = effectiveReadiness(pickedReadiness, redFlags);
   const shoulderPain = log?.shoulderPain ?? 0;
 
-  const [bwInput, setBwInput] = useState('');
   const [startInput, setStartInput] = useState(format(new Date(), 'yyyy-MM-dd'));
-
-  useEffect(() => { setBwInput(''); }, [key]);
 
   // ── No program started yet ──
   if (!data.programStartDate) {
@@ -79,6 +85,10 @@ const Train = ({ selectedDate, onUpdate }: TrainProps) => {
     updateSessionLog(selectedDate, (l) => { l.shoulderPain = p; });
     refresh();
   };
+  const setRedFlags = (rf: RedFlagState) => {
+    updateSessionLog(selectedDate, (l) => { l.redFlags = rf; });
+    refresh();
+  };
 
   const targets = getTargetsForDate(selectedDate);
   const bw = latestBodyweight();
@@ -99,12 +109,17 @@ const Train = ({ selectedDate, onUpdate }: TrainProps) => {
             C {targets.dailyCarbs}g · F {targets.dailyFats}g
           </div>
         </div>
-        <BodyweightCard bw={bw} bwInput={bwInput} setBwInput={setBwInput} date={key} onSaved={refresh} />
+        <BodyweightCard key={key} bw={bw} date={key} onSaved={refresh} />
       </div>
     );
   }
 
-  const adjusted = adjustForReadiness(session.day.exercises, readiness, shoulderPain);
+  // H-03: gate exercises by their prerequisite (e.g. strict pull-up needs band
+  // pull-up at top of range × 2). gated[] preserves all original entries; any
+  // unmet prereq swaps the exercise for its fallback regression and tags
+  // `prerequisiteUnmet` so the UI explains why.
+  const gated = applyPrerequisites(session.day.exercises, selectedDate);
+  const adjusted = adjustForReadiness(gated, readiness, shoulderPain);
   const active = adjusted.filter((e) => !e.skipped);
   const skipped = adjusted.filter((e) => e.skipped);
 
@@ -169,7 +184,16 @@ const Train = ({ selectedDate, onUpdate }: TrainProps) => {
           <div className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Readiness today</div>
           {(() => {
             const sug = suggestReadiness(selectedDate);
-            if (!sug) return null;
+            const stale = isHealthDataStale();
+            const syncLbl = lastSyncLabel();
+            if (!sug) {
+              return (
+                <div className="text-xs rounded-lg px-3 py-2 mb-2 bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-300">
+                  No Garmin readiness data for today{syncLbl !== 'never' ? ` · last synced ${syncLbl}` : ''} — pick by feel.
+                  {stale && <span className="ml-1 text-amber-700 dark:text-amber-300">Sync may be out of date — run <code>garmin_sync.py</code>.</span>}
+                </div>
+              );
+            }
             const cls = sug.suggestion === 'green' ? 'text-green-700 bg-green-50 dark:bg-green-900/30 dark:text-green-300'
               : sug.suggestion === 'yellow' ? 'text-yellow-700 bg-yellow-50 dark:bg-yellow-900/30 dark:text-yellow-300'
               : 'text-red-700 bg-red-50 dark:bg-red-900/30 dark:text-red-300';
@@ -177,21 +201,32 @@ const Train = ({ selectedDate, onUpdate }: TrainProps) => {
               <div className={`text-xs rounded-lg px-3 py-2 mb-2 ${cls}`}>
                 <strong>Garmin suggests {sug.suggestion.toUpperCase()}:</strong> {sug.reasons.join(' · ')}
                 {sug.hrv !== undefined ? ` · HRV ${sug.hrv}ms` : ''} — your call, tap below.
+                <div className="mt-0.5 opacity-80">Last sync: {syncLbl}{stale ? ' — may be stale' : ''}.</div>
               </div>
             );
           })()}
           <div className="flex gap-2">
-            {(Object.keys(READINESS_INFO) as Readiness[]).map((r) => (
-              <button
-                key={r}
-                onClick={() => setReadiness(r)}
-                className={`px-3 py-1.5 rounded-lg text-sm font-bold text-white transition-opacity ${READINESS_INFO[r].cls} ${readiness === r ? 'opacity-100 ring-2 ring-offset-1 ring-gray-400' : 'opacity-40'}`}
-              >
-                {READINESS_INFO[r].label}
-              </button>
-            ))}
+            {(Object.keys(READINESS_INFO) as Readiness[]).map((r) => {
+              const forced = readiness === 'red' && pickedReadiness !== 'red' && r !== 'red';
+              return (
+                <button
+                  key={r}
+                  onClick={() => setReadiness(r)}
+                  disabled={forced}
+                  title={forced ? 'Disabled — symptom check forces RED today' : undefined}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-bold text-white transition-opacity ${READINESS_INFO[r].cls} ${readiness === r ? 'opacity-100 ring-2 ring-offset-1 ring-gray-400' : 'opacity-40'} ${forced ? 'cursor-not-allowed' : ''}`}
+                >
+                  {READINESS_INFO[r].label}
+                </button>
+              );
+            })}
           </div>
-          <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">{READINESS_INFO[readiness].desc}</div>
+          <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            {READINESS_INFO[readiness].desc}
+            {readiness === 'red' && pickedReadiness !== 'red' && (
+              <span className="ml-1 text-red-700 dark:text-red-300">(forced by symptom check)</span>
+            )}
+          </div>
         </div>
 
         {/* Shoulder pain */}
@@ -216,6 +251,13 @@ const Train = ({ selectedDate, onUpdate }: TrainProps) => {
           Training-day nutrition: {targets.dailyCalories} kcal · P {targets.dailyProtein}g · C {targets.dailyCarbs}g · F {targets.dailyFats}g · Water 2.5–3 L
         </div>
       </div>
+
+      {/* H-02: acute-symptom screen lives BETWEEN the session header and the
+          warm-up so the user must scroll past it. Persists into the session log
+          and is read back by effectiveReadiness on every render. */}
+      <RedFlagChecklist value={redFlags} onChange={setRedFlags} />
+
+      <CoachDaily date={selectedDate} />
 
       {/* Warm-up */}
       <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow">
@@ -251,10 +293,18 @@ const Train = ({ selectedDate, onUpdate }: TrainProps) => {
                     {ex.name}
                     {ex.painFreeOnly && <span className="ml-2 text-xs font-semibold text-amber-600">pain-free only</span>}
                     {ex.leftFocus && <span className="ml-2 text-xs font-semibold text-blue-500">left focus</span>}
+                    {'prerequisiteUnmet' in ex && ex.prerequisiteUnmet && (
+                      <span className="ml-2 text-xs font-semibold text-amber-600">substitute</span>
+                    )}
                   </h3>
                   <div className="text-sm text-gray-600 dark:text-gray-300">
-                    {ex.adjustedSets} × {ex.repsSpec}{ex.adjustedSets !== ex.sets ? ' (reduced — yellow)' : ''} · {ex.equipment} · rest {ex.rest}{ex.rir ? ` · RIR ${ex.rir}` : ''}
+                    {ex.adjustedSets} × {ex.repsSpec.replace(/^×\s*/, '')}{ex.adjustedSets !== ex.sets ? ' (reduced — yellow)' : ''} · {ex.equipment} · rest {ex.rest}{ex.rir ? ` · RIR ${ex.rir}` : ''}
                   </div>
+                  {'prerequisiteUnmet' in ex && ex.prerequisiteUnmet && (
+                    <div className="text-xs text-amber-700 dark:text-amber-300 mt-1 flex items-center gap-1">
+                      <AlertTriangle className="w-3.5 h-3.5" /> Prerequisite not met: {ex.prerequisiteUnmet}.
+                    </div>
+                  )}
                   {ex.cues && <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">{ex.cues}</div>}
                   {(ex.regression || ex.progression) && (
                     <div className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
@@ -325,48 +375,69 @@ const Train = ({ selectedDate, onUpdate }: TrainProps) => {
         />
       </div>
 
-      <BodyweightCard bw={bw} bwInput={bwInput} setBwInput={setBwInput} date={key} onSaved={refresh} />
+      {/* `key={key}` re-mounts the card on date change so its internal input
+          state resets without a useEffect (M-02). */}
+      <BodyweightCard key={key} bw={bw} date={key} onSaved={refresh} />
     </div>
   );
 };
 
 interface BwProps {
   bw: { date: string; weight: number | '' } | null;
-  bwInput: string;
-  setBwInput: (v: string) => void;
   date: string;
   onSaved: () => void;
 }
 
-const BodyweightCard = ({ bw, bwInput, setBwInput, date, onSaved }: BwProps) => (
-  <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow">
-    <h3 className="font-bold text-gray-900 dark:text-white mb-2 flex items-center gap-2">
-      <Scale className="w-5 h-5" /> Bodyweight
-      {bw && <span className="text-sm font-normal text-gray-500 dark:text-gray-400">last: {bw.weight} kg ({bw.date})</span>}
-    </h3>
-    <div className="flex gap-2">
-      <input
-        type="number" step="0.1" placeholder="kg"
-        value={bwInput}
-        onChange={(e) => setBwInput(e.target.value)}
-        className="w-28 border rounded-lg px-3 py-2 text-sm dark:bg-gray-700 dark:text-white dark:border-gray-600"
-      />
-      <button
-        onClick={() => {
-          const v = parseFloat(bwInput);
-          if (!Number.isNaN(v) && v > 0) {
-            addBodyMetric({ date, weight: v });
-            setBwInput('');
-            onSaved();
-          }
-        }}
-        className="bg-primary-600 text-white px-4 py-2 rounded-lg text-sm font-semibold"
-      >
-        Log
-      </button>
+const BodyweightCard = ({ bw, date, onSaved }: BwProps) => {
+  const [bwInput, setBwInput] = useState('');
+  const [warning, setWarning] = useState<string | null>(null);
+
+  const handleLog = () => {
+    setWarning(null);
+    const v = parseFloat(bwInput);
+    if (Number.isNaN(v) || v <= 0) {
+      setWarning('Enter a positive number in kg.');
+      return;
+    }
+    // L-04: clamp to a sane physiological range to catch typos like "810" vs "81.0"
+    if (v < BODYWEIGHT_MIN_KG || v > BODYWEIGHT_MAX_KG) {
+      setWarning(`Bodyweight ${v} kg looks like a typo — must be between ${BODYWEIGHT_MIN_KG} and ${BODYWEIGHT_MAX_KG} kg.`);
+      return;
+    }
+    addBodyMetric({ date, weight: v });
+    setBwInput('');
+    onSaved();
+  };
+
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow">
+      <h3 className="font-bold text-gray-900 dark:text-white mb-2 flex items-center gap-2">
+        <Scale className="w-5 h-5" /> Bodyweight
+        {bw && <span className="text-sm font-normal text-gray-500 dark:text-gray-400">last: {bw.weight} kg ({bw.date})</span>}
+      </h3>
+      <div className="flex gap-2">
+        <input
+          type="number" step="0.1" placeholder="kg"
+          min={BODYWEIGHT_MIN_KG} max={BODYWEIGHT_MAX_KG}
+          value={bwInput}
+          onChange={(e) => setBwInput(e.target.value)}
+          className="w-28 border rounded-lg px-3 py-2 text-sm dark:bg-gray-700 dark:text-white dark:border-gray-600"
+        />
+        <button
+          onClick={handleLog}
+          className="bg-primary-600 text-white px-4 py-2 rounded-lg text-sm font-semibold"
+        >
+          Log
+        </button>
+      </div>
+      {warning && (
+        <p className="text-xs text-amber-700 dark:text-amber-400 mt-2 flex items-center gap-1">
+          <AlertTriangle className="w-3.5 h-3.5" /> {warning}
+        </p>
+      )}
+      <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">Weekly trend matters, not the daily number.</p>
     </div>
-    <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">Weekly trend matters, not the daily number.</p>
-  </div>
-);
+  );
+};
 
 export default Train;

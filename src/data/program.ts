@@ -228,7 +228,21 @@ export const PHASES: ProgramPhase[] = [
       {
         key: 'tue', label: 'Strict pull-ups + rehab', goal: 'Strict reps in clusters, band back-off volume.',
         exercises: [
-          { id: 'strict_pullup', name: 'Strict Pull-Up Clusters', sets: 5, repsSpec: '×2–5', equipment: 'Bar', category: 'pullup', rest: '2–3 min', rir: '1', painFreeOnly: true, cues: 'Quality singles/doubles beat sloppy fives.', regression: 'Band-assisted' },
+          {
+            id: 'strict_pullup', name: 'Strict Pull-Up Clusters', sets: 5, repsSpec: '×2–5',
+            equipment: 'Bar', category: 'pullup', rest: '2–3 min', rir: '1', painFreeOnly: true,
+            cues: 'Quality singles/doubles beat sloppy fives.', regression: 'Band-assisted',
+            // SAFETY GATE (H-03): Only attempt strict reps after demonstrating
+            // capacity on the band pull-up. If the user has not hit the top of
+            // the band-pullup rep range on both of their last two sessions,
+            // swap to a band_pullup set instead and explain why in the UI.
+            prerequisite: {
+              kind: 'top_of_range_x2',
+              sourceExerciseId: 'band_pullup',
+              description: 'Hit top of band pull-up rep range in 2 consecutive sessions first',
+              fallbackExerciseId: 'band_pullup',
+            },
+          },
           { id: 'band_pullup', name: 'Band Pull-Up (back-off)', sets: 2, repsSpec: '×8', equipment: 'Band + Bar', category: 'pullup', rest: '90 s', rir: '2' },
           { id: 'inverted_row_elev', name: 'Inverted Row (feet elevated)', sets: 4, repsSpec: '×10–12', equipment: 'Barbell + Rack + Box', category: 'row', rest: '90 s', rir: '2' },
           ...REHAB_BLOCK,

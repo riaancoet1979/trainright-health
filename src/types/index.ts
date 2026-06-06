@@ -103,5 +103,10 @@ export interface BodyStatEntry {
   leftArm?: number; // cm
   rightArm?: number; // cm
   neck?: number; // cm
+  // Optional richer fields imported from older TrainRight backups. All are
+  // optional → existing stored entries deserialise unchanged.
+  thighL?: number; // cm — left thigh circumference
+  thighR?: number; // cm — right thigh circumference
+  shoulderWidth?: number; // cm — bi-acromial width
   notes?: string;
 }

@@ -98,7 +98,7 @@ For testing locally on iPhone:
 
 ## Tech Stack
 
-- **React 18** with TypeScript
+- **React 19** with TypeScript
 - **Vite** for fast development and building
 - **Tailwind CSS** for styling
 - **Chart.js** for analytics visualizations

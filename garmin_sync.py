@@ -1,7 +1,7 @@
 """
 TrainRight Health — Garmin Connect sync
 Pulls the last 14 days of steps, sleep, resting HR and HRV from Garmin
-Connect and writes dist/garmin_health.json, which the app auto-loads.
+Connect and writes garmin_health.json, which the app auto-loads.
 
 Setup (once):
     pip install garminconnect
@@ -9,7 +9,13 @@ Setup (once):
                                       token is saved so you won't log in again)
 
 Run (daily, or schedule with Task Scheduler / run_garmin_sync.bat):
-    python garmin_sync.py
+    python garmin_sync.py            (compact log)
+    python garmin_sync.py --verbose  (prints per-day metrics — for debugging)
+
+Privacy:
+    The output file is per-device personal health data. Both target paths
+    (public/, dist/) are gitignored — the file is never committed and never
+    deployed to public GitHub Pages. See audit/SECURITY_PRIVACY.md.
 """
 
 import json
@@ -25,12 +31,14 @@ except ImportError:
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 TOKEN_DIR = os.path.join(HERE, ".garmin_tokens")
-# Written to both: public/ (committed -> GitHub Pages) and dist/ (local serving)
+# Written to: public/ (dev server picks it up) and dist/ (production build
+# serves it). Both paths are gitignored — see .gitignore. Never commit these.
 OUT_FILES = [
     os.path.join(HERE, "public", "garmin_health.json"),
     os.path.join(HERE, "dist", "garmin_health.json"),
 ]
 DAYS = 14
+VERBOSE = "--verbose" in sys.argv or "-v" in sys.argv
 
 
 def login() -> Garmin:
@@ -93,7 +101,11 @@ def main() -> None:
 
         if entry:
             out[ds] = entry
-        print(f"{ds}: {entry or 'no data'}")
+        if VERBOSE:
+            print(f"{ds}: {entry or 'no data'}")
+        else:
+            # Compact log: just the date + a metric-count summary, no raw values
+            print(f"{ds}: {len(entry)} metric(s)" if entry else f"{ds}: no data")
 
     payload = {"source": "garmin", "syncedAt": today.isoformat(), "days": out}
     for out_file in OUT_FILES:

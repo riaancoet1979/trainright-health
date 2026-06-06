@@ -78,6 +78,30 @@ export const fetchGarminFile = async (): Promise<number | null> => {
   }
 };
 
+// ── Sync staleness (M-01) ──
+/** Hours since the most recent successful Garmin sync; null if never synced. */
+export const hoursSinceSync = (m: HealthMetrics = getHealthMetrics()): number | null => {
+  if (!m.syncedAt) return null;
+  const t = Date.parse(m.syncedAt);
+  if (Number.isNaN(t)) return null;
+  return (Date.now() - t) / 36e5;
+};
+
+/** True when no sync has happened in `thresholdHours` (default 48). */
+export const isHealthDataStale = (thresholdHours = 48): boolean => {
+  const h = hoursSinceSync();
+  return h === null || h > thresholdHours;
+};
+
+/** Human-readable label for the last sync, e.g. "5 h ago" / "2 d ago" / "never". */
+export const lastSyncLabel = (m: HealthMetrics = getHealthMetrics()): string => {
+  const h = hoursSinceSync(m);
+  if (h === null) return 'never';
+  if (h < 1) return 'just now';
+  if (h < 24) return `${Math.round(h)} h ago`;
+  return `${Math.round(h / 24)} d ago`;
+};
+
 // ── Readiness suggestion ──
 export interface ReadinessSuggestion {
   suggestion: Readiness;
