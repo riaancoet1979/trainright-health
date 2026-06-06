@@ -379,7 +379,7 @@ const BodyStats = () => {
             {[
               { key: 'weight' as const, label: 'Weight', show: weightPoints.length >= 2 },
               { key: 'bodyFat' as const, label: 'Body Fat', show: bodyFatPoints.length >= 2 },
-              { key: 'measurements' as const, label: 'Measurements', show: waistPoints.length >= 2 || chestPoints.length >= 2 || hipsPoints.length >= 2 },
+              { key: 'measurements' as const, label: 'Measurements', show: waistPoints.length >= 1 || chestPoints.length >= 1 || hipsPoints.length >= 1 },
             ]
               .filter(t => t.show)
               .map(t => (
@@ -418,24 +418,23 @@ const BodyStats = () => {
 
           {activeChart === 'measurements' && (
             <div className="space-y-4">
-              {waistPoints.length >= 2 && (
-                <div>
-                  <p className="text-xs font-medium text-purple-600 dark:text-purple-400 mb-1">Waist</p>
-                  <MiniLineChart points={waistPoints} color="#9333ea" unit="cm" height={100} />
+              {[
+                { points: waistPoints, label: 'Waist', color: '#9333ea', textClass: 'text-purple-600 dark:text-purple-400' },
+                { points: chestPoints, label: 'Chest', color: '#16a34a', textClass: 'text-green-600 dark:text-green-400' },
+                { points: hipsPoints, label: 'Hips', color: '#db2777', textClass: 'text-pink-600 dark:text-pink-400' },
+              ].filter(m => m.points.length >= 1).map(m => (
+                <div key={m.label}>
+                  <p className={`text-xs font-medium ${m.textClass} mb-1`}>{m.label}</p>
+                  {m.points.length >= 2 ? (
+                    <MiniLineChart points={m.points} color={m.color} unit="cm" height={100} />
+                  ) : (
+                    <div className="flex items-center gap-3 px-2 py-3 bg-gray-50 dark:bg-gray-700/40 rounded-lg">
+                      <span className="text-2xl font-bold" style={{ color: m.color }}>{m.points[0].value}</span>
+                      <span className="text-sm text-gray-500 dark:text-gray-400">cm &mdash; {m.points[0].label} (add a 2nd entry to see trend)</span>
+                    </div>
+                  )}
                 </div>
-              )}
-              {chestPoints.length >= 2 && (
-                <div>
-                  <p className="text-xs font-medium text-green-600 dark:text-green-400 mb-1">Chest</p>
-                  <MiniLineChart points={chestPoints} color="#16a34a" unit="cm" height={100} />
-                </div>
-              )}
-              {hipsPoints.length >= 2 && (
-                <div>
-                  <p className="text-xs font-medium text-pink-600 dark:text-pink-400 mb-1">Hips</p>
-                  <MiniLineChart points={hipsPoints} color="#db2777" unit="cm" height={100} />
-                </div>
-              )}
+              ))}
             </div>
           )}
         </div>
