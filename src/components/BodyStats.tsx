@@ -1,12 +1,14 @@
-import { useState, useMemo, useCallback } from 'react';
-import { format } from 'date-fns';
-import { Trash2, Edit3, Scale, TrendingDown, TrendingUp, Minus, ChevronDown, ChevronRight } from 'lucide-react';
+import { useState, useMemo, useCallback, useRef } from 'react';
+import { format, parseISO, differenceInDays } from 'date-fns';
+import { Trash2, Edit3, Scale, TrendingDown, TrendingUp, Minus, ChevronDown, ChevronRight, Download } from 'lucide-react';
 import {
   getBodyStats,
   saveBodyStatEntry,
   deleteBodyStatEntry,
+  importBodyAssessment,
 } from '../utils/storage';
-import type { BodyStatEntry } from '../types';
+import { INBODY_2026_05_26 } from '../data/inbodyScans';
+import type { BodyStatEntry, SegmentalMeasurement } from '../types';
 
 // ─── Tiny inline SVG line-chart ───────────────────────────────────────────────
 
@@ -105,6 +107,76 @@ const MiniLineChart = ({ points, color, unit, height = 120 }: MiniLineChartProps
   );
 };
 
+// ─── InBody detail-panel helpers ──────────────────────────────────────────────
+
+const REGION_LABEL: Record<string, string> = {
+  leftArm:  'Left Arm',
+  rightArm: 'Right Arm',
+  trunk:    'Trunk',
+  leftLeg:  'Left Leg',
+  rightLeg: 'Right Leg',
+};
+
+const CLASSIFICATION_TONE: Record<string, string> = {
+  Normal: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300',
+  Over:   'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300',
+  Under:  'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300',
+  Low:    'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
+  High:   'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
+};
+
+const SegmentalGrid = ({ items, kind }: { items: SegmentalMeasurement[]; kind: 'lean' | 'fat' }) => (
+  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 mt-1">
+    {items.map(seg => {
+      const tone = seg.classification ? CLASSIFICATION_TONE[seg.classification] ?? 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300' : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300';
+      return (
+        <div key={seg.region} className="rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-2">
+          <div className="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400">
+            {REGION_LABEL[seg.region] ?? seg.region}
+          </div>
+          <div className={`text-base font-semibold ${kind === 'lean' ? 'text-green-700 dark:text-green-300' : 'text-orange-700 dark:text-orange-300'}`}>
+            {seg.massKg} kg
+          </div>
+          {seg.refPercent !== undefined && (
+            <div className="text-[11px] text-gray-500 dark:text-gray-400">{seg.refPercent}% ref</div>
+          )}
+          {seg.classification && (
+            <span className={`inline-block mt-1 text-[10px] font-medium px-1.5 py-0.5 rounded ${tone}`}>
+              {seg.classification}
+            </span>
+          )}
+        </div>
+      );
+    })}
+  </div>
+);
+
+const StatTile = ({ label, value }: { label: string; value: string }) => (
+  <div className="rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-2">
+    <div className="text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400">{label}</div>
+    <div className="text-base font-semibold text-gray-800 dark:text-gray-100">{value}</div>
+  </div>
+);
+
+const fmtDate = (iso?: string, fmt = 'd MMM yyyy HH:mm'): string | null => {
+  if (!iso) return null;
+  try {
+    return format(parseISO(iso), fmt);
+  } catch {
+    return null;
+  }
+};
+
+const isRichInBody = (e: BodyStatEntry): boolean =>
+  e.source === 'inbody-270'
+  || e.source === 'inbody-other'
+  || e.totalBodyWaterL !== undefined
+  || e.skeletalMuscleMassKg !== undefined
+  || e.bodyFatMassKg !== undefined
+  || e.inBodyScore !== undefined
+  || (e.segmentalLean?.length ?? 0) > 0
+  || (e.segmentalFat?.length ?? 0) > 0;
+
 // ─── Trend badge ──────────────────────────────────────────────────────────────
 
 const TrendBadge = ({ first, last, unit }: { first: number; last: number; unit: string }) => {
@@ -149,8 +221,8 @@ const BodyStats = () => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [prefilled, setPrefilled] = useState(false);
-  const [activeChart, setActiveChart] = useState<'weight' | 'bodyFat' | 'measurements'>('weight');
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const chartsRef = useRef<HTMLDivElement>(null);
 
   const setField = (key: keyof FormState, value: string) =>
     setForm(f => ({ ...f, [key]: value }));
@@ -232,6 +304,8 @@ const BodyStats = () => {
     saveBodyStatEntry(entry);
     resetForm();
     bump();
+    // Scroll to charts so user sees their progress immediately
+    setTimeout(() => chartsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80);
   };
 
   const handleEdit = (e: BodyStatEntry) => {
@@ -262,6 +336,22 @@ const BodyStats = () => {
     bump();
   };
 
+  /** Import the hard-coded 26 May 2026 InBody-270 scan. Idempotent: re-running
+   *  enriches missing fields without overwriting user edits and never
+   *  duplicates a previously-imported scan. */
+  const handleImportInBody = () => {
+    const r = importBodyAssessment(INBODY_2026_05_26);
+    alert(
+      r.action === 'added'
+        ? '✅ InBody scan added to 26 May 2026.'
+        : r.action === 'enriched'
+        ? `✅ Enriched existing 26 May entry with ${r.enrichedFields?.length ?? 0} new fields.`
+        : 'No change — scan is already up to date.',
+    );
+    bump();
+    setExpandedId(r.id);
+  };
+
   // Chart data helpers
   const weightPoints: ChartPoint[] = entries
     .filter(e => e.weight !== undefined)
@@ -286,6 +376,17 @@ const BodyStats = () => {
   const thighRPoints        = mkPoints('thighR');
   const shoulderWidthPoints = mkPoints('shoulderWidth');
 
+  // ── InBody-derived chart series — unit varies per metric, so each series
+  //    carries its own unit and renders inside the same loop as measurements. ──
+  const skeletalMusclePoints  = mkPoints('skeletalMuscleMassKg');
+  const bodyFatMassPoints     = mkPoints('bodyFatMassKg');
+  const fatFreeMassPoints     = mkPoints('fatFreeMassKg');
+  const totalBodyWaterPoints  = mkPoints('totalBodyWaterL');
+  const inBodyScorePoints     = mkPoints('inBodyScore');
+  const bmrPoints             = mkPoints('basalMetabolicRateKcal');
+  const visceralFatPoints     = mkPoints('visceralFatLevel');
+  const bmiPoints             = mkPoints('bmi');
+
   // Latest entry for summary card
   const latest = entries.length > 0 ? entries[entries.length - 1] : null;
   const first = entries.length > 1 ? entries[0] : null;
@@ -298,18 +399,29 @@ const BodyStats = () => {
           <h3 className="text-xl font-bold flex items-center gap-2">
             <Scale className="w-5 h-5" /> Body Stats
           </h3>
-          <button
-            onClick={() => {
-              if (showForm) {
-                resetForm();
-              } else {
-                openNewEntry();
-              }
-            }}
-            className="btn-primary px-4 py-2 text-sm"
-          >
-            {showForm && !editingId ? 'Cancel' : '+ Log Entry'}
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={handleImportInBody}
+              className="btn-secondary px-3 py-2 text-xs flex items-center gap-1"
+              title="Import the 26 May 2026 InBody scan"
+            >
+              <Download className="w-3 h-3" />
+              <span className="hidden sm:inline">Import 26 May InBody</span>
+              <span className="sm:hidden">Import InBody</span>
+            </button>
+            <button
+              onClick={() => {
+                if (showForm) {
+                  resetForm();
+                } else {
+                  openNewEntry();
+                }
+              }}
+              className="btn-primary px-4 py-2 text-sm"
+            >
+              {showForm && !editingId ? 'Cancel' : '+ Log Entry'}
+            </button>
+          </div>
         </div>
 
         {/* Latest snapshot */}
@@ -472,96 +584,110 @@ const BodyStats = () => {
 
       {/* ── Progress charts ── */}
       {entries.length >= 1 && (
-        <div className="card">
-          <h4 className="font-semibold mb-3">Progress Charts</h4>
-
-          {/* Tab switcher — measurements tab is always available so the user
-              sees a chart per section even with a single entry. */}
-          <div className="flex gap-2 mb-4">
-            {[
-              { key: 'weight' as const,       label: 'Weight',       show: weightPoints.length >= 1 },
-              { key: 'bodyFat' as const,      label: 'Body Fat',     show: bodyFatPoints.length >= 1 },
-              { key: 'measurements' as const, label: 'Measurements', show: [waistPoints, chestPoints, hipsPoints, leftArmPoints, rightArmPoints, neckPoints, thighLPoints, thighRPoints, shoulderWidthPoints].some(p => p.length >= 1) },
-            ]
-              .filter(t => t.show)
-              .map(t => (
-                <button key={t.key}
-                  onClick={() => setActiveChart(t.key)}
-                  className={`px-3 py-1.5 text-sm rounded-lg border transition-colors ${
-                    activeChart === t.key
-                      ? 'bg-primary-600 text-white border-primary-600'
-                      : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400'
-                  }`}
-                >
-                  {t.label}
-                </button>
-              ))}
+        <div className="card space-y-6" ref={chartsRef}>
+          <div>
+            <h4 className="font-semibold mb-1">Progress Charts</h4>
+            {entries.length >= 2 && first && latest && (
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                {differenceInDays(
+                  new Date(latest.date + 'T00:00:00'),
+                  new Date(first.date + 'T00:00:00'),
+                )}{' '}
+                days tracked · {entries.length} entries
+              </p>
+            )}
           </div>
 
-          {activeChart === 'weight' && weightPoints.length >= 1 && (
+          {/* Weight */}
+          {weightPoints.length >= 1 && (
             <div>
-              <MiniLineChart points={weightPoints} color="#3b82f6" unit="kg" height={130} />
-              <div className="flex justify-between text-xs text-gray-500 mt-1 px-8">
-                <span>{weightPoints[0].value} kg</span>
-                <span className="font-medium">Latest: {weightPoints[weightPoints.length - 1].value} kg</span>
+              <div className="flex items-baseline justify-between mb-1">
+                <p className="text-sm font-semibold text-blue-600 dark:text-blue-400">⚖️ Weight</p>
+                <div className="flex items-center gap-3 text-xs text-gray-500">
+                  <span>Start: {weightPoints[0].value} kg</span>
+                  <span className="font-medium text-gray-700 dark:text-gray-200">
+                    Now: {weightPoints[weightPoints.length - 1].value} kg
+                  </span>
+                  {weightPoints.length >= 2 && (
+                    <TrendBadge first={weightPoints[0].value} last={weightPoints[weightPoints.length - 1].value} unit="kg" />
+                  )}
+                </div>
               </div>
+              <MiniLineChart points={weightPoints} color="#3b82f6" unit="kg" height={150} />
               {weightPoints.length === 1 && (
-                <p className="text-xs text-gray-400 dark:text-gray-500 mt-2 text-center">
-                  Log another entry to see the trend.
-                </p>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1 text-center">Log another entry to see the trend line.</p>
               )}
             </div>
           )}
 
-          {activeChart === 'bodyFat' && bodyFatPoints.length >= 1 && (
-            <div>
-              <MiniLineChart points={bodyFatPoints} color="#f97316" unit="%" height={130} />
-              <div className="flex justify-between text-xs text-gray-500 mt-1 px-8">
-                <span>{bodyFatPoints[0].value}%</span>
-                <span className="font-medium">Latest: {bodyFatPoints[bodyFatPoints.length - 1].value}%</span>
+          {/* Body Fat */}
+          {bodyFatPoints.length >= 1 && (
+            <div className="pt-4 border-t border-gray-100 dark:border-gray-800">
+              <div className="flex items-baseline justify-between mb-1">
+                <p className="text-sm font-semibold text-orange-600 dark:text-orange-400">🔥 Body Fat</p>
+                <div className="flex items-center gap-3 text-xs text-gray-500">
+                  <span>Start: {bodyFatPoints[0].value}%</span>
+                  <span className="font-medium text-gray-700 dark:text-gray-200">
+                    Now: {bodyFatPoints[bodyFatPoints.length - 1].value}%
+                  </span>
+                  {bodyFatPoints.length >= 2 && (
+                    <TrendBadge first={bodyFatPoints[0].value} last={bodyFatPoints[bodyFatPoints.length - 1].value} unit="%" />
+                  )}
+                </div>
               </div>
+              <MiniLineChart points={bodyFatPoints} color="#f97316" unit="%" height={150} />
               {bodyFatPoints.length === 1 && (
-                <p className="text-xs text-gray-400 dark:text-gray-500 mt-2 text-center">
-                  Log another entry to see the trend.
-                </p>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1 text-center">Log another entry to see the trend line.</p>
               )}
             </div>
           )}
 
-          {activeChart === 'measurements' && (
-            <div className="space-y-4">
-              {[
-                { points: waistPoints,         label: 'Waist',          color: '#9333ea', textClass: 'text-purple-600 dark:text-purple-400' },
-                { points: chestPoints,         label: 'Chest',          color: '#16a34a', textClass: 'text-green-600 dark:text-green-400' },
-                { points: hipsPoints,          label: 'Hips',           color: '#db2777', textClass: 'text-pink-600 dark:text-pink-400' },
-                { points: shoulderWidthPoints, label: 'Shoulder Width', color: '#0ea5e9', textClass: 'text-sky-600 dark:text-sky-400' },
-                { points: leftArmPoints,       label: 'Left Arm',       color: '#2563eb', textClass: 'text-blue-600 dark:text-blue-400' },
-                { points: rightArmPoints,      label: 'Right Arm',      color: '#7c3aed', textClass: 'text-violet-600 dark:text-violet-400' },
-                { points: thighLPoints,        label: 'Left Thigh',     color: '#ca8a04', textClass: 'text-yellow-600 dark:text-yellow-400' },
-                { points: thighRPoints,        label: 'Right Thigh',    color: '#ea580c', textClass: 'text-orange-600 dark:text-orange-400' },
-                { points: neckPoints,          label: 'Neck',           color: '#0891b2', textClass: 'text-cyan-600 dark:text-cyan-400' },
-              ].filter(m => m.points.length >= 1).map(m => {
-                const first = m.points[0];
-                const last  = m.points[m.points.length - 1];
-                return (
-                  <div key={m.label}>
-                    <div className="flex items-baseline justify-between mb-1">
-                      <p className={`text-xs font-medium ${m.textClass}`}>{m.label}</p>
-                      <span className="text-xs text-gray-500 dark:text-gray-400">
-                        {last.value} cm{m.points.length >= 2 && ` · Δ ${(last.value - first.value).toFixed(1)} cm`}
-                      </span>
-                    </div>
-                    <MiniLineChart points={m.points} color={m.color} unit="cm" height={100} />
-                    {m.points.length === 1 && (
-                      <p className="text-xs text-gray-400 dark:text-gray-500 mt-1 text-center">
-                        1 entry on {first.label} — log another to see a trend line.
-                      </p>
+          {/* Measurements + InBody-derived series — each series carries its
+              own unit so kg / L / kcal can render side-by-side with cm. */}
+          {[
+            { points: waistPoints,         label: 'Waist',              unit: 'cm',         color: '#9333ea', textClass: 'text-purple-600 dark:text-purple-400' },
+            { points: chestPoints,         label: 'Chest',              unit: 'cm',         color: '#16a34a', textClass: 'text-green-600 dark:text-green-400' },
+            { points: hipsPoints,          label: 'Hips',               unit: 'cm',         color: '#db2777', textClass: 'text-pink-600 dark:text-pink-400' },
+            { points: shoulderWidthPoints, label: 'Shoulder Width',     unit: 'cm',         color: '#0ea5e9', textClass: 'text-sky-600 dark:text-sky-400' },
+            { points: leftArmPoints,       label: 'Left Arm',           unit: 'cm',         color: '#2563eb', textClass: 'text-blue-600 dark:text-blue-400' },
+            { points: rightArmPoints,      label: 'Right Arm',          unit: 'cm',         color: '#7c3aed', textClass: 'text-violet-600 dark:text-violet-400' },
+            { points: thighLPoints,        label: 'Left Thigh',         unit: 'cm',         color: '#ca8a04', textClass: 'text-yellow-600 dark:text-yellow-400' },
+            { points: thighRPoints,        label: 'Right Thigh',        unit: 'cm',         color: '#ea580c', textClass: 'text-orange-600 dark:text-orange-400' },
+            { points: neckPoints,          label: 'Neck',               unit: 'cm',         color: '#0891b2', textClass: 'text-cyan-600 dark:text-cyan-400' },
+            // InBody-derived rich series — show only when ≥1 scan has supplied the metric.
+            { points: skeletalMusclePoints,label: 'Skeletal Muscle',    unit: 'kg',         color: '#16a34a', textClass: 'text-green-600 dark:text-green-400' },
+            { points: bodyFatMassPoints,   label: 'Body Fat Mass',      unit: 'kg',         color: '#ea580c', textClass: 'text-orange-600 dark:text-orange-400' },
+            { points: fatFreeMassPoints,   label: 'Fat-Free Mass',      unit: 'kg',         color: '#0284c7', textClass: 'text-sky-600 dark:text-sky-400' },
+            { points: totalBodyWaterPoints,label: 'Total Body Water',   unit: 'L',          color: '#06b6d4', textClass: 'text-cyan-600 dark:text-cyan-400' },
+            { points: inBodyScorePoints,   label: 'InBody Score',       unit: '/100',       color: '#9333ea', textClass: 'text-purple-600 dark:text-purple-400' },
+            { points: bmrPoints,           label: 'BMR',                unit: 'kcal/day',   color: '#dc2626', textClass: 'text-red-600 dark:text-red-400' },
+            { points: visceralFatPoints,   label: 'Visceral Fat Level', unit: '',           color: '#a16207', textClass: 'text-yellow-700 dark:text-yellow-500' },
+            { points: bmiPoints,           label: 'BMI',                unit: '',           color: '#525252', textClass: 'text-gray-700 dark:text-gray-300' },
+          ].filter(m => m.points.length >= 1).map((m, idx) => {
+            const firstPt = m.points[0];
+            const lastPt  = m.points[m.points.length - 1];
+            const valueSuffix = m.unit ? ` ${m.unit}` : '';
+            return (
+              <div key={m.label} className={idx === 0 ? 'pt-4 border-t border-gray-100 dark:border-gray-800' : ''}>
+                <div className="flex items-baseline justify-between mb-1">
+                  <p className={`text-sm font-semibold ${m.textClass}`}>{m.label}</p>
+                  <div className="flex items-center gap-3 text-xs text-gray-500">
+                    {m.points.length >= 2 && <span>Start: {firstPt.value}{valueSuffix}</span>}
+                    <span className="font-medium text-gray-700 dark:text-gray-200">{lastPt.value}{valueSuffix}</span>
+                    {m.points.length >= 2 && (
+                      <TrendBadge first={firstPt.value} last={lastPt.value} unit={m.unit} />
                     )}
                   </div>
-                );
-              })}
-            </div>
-          )}
+                </div>
+                <MiniLineChart points={m.points} color={m.color} unit={m.unit} height={110} />
+                {m.points.length === 1 && (
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1 text-center">
+                    1 entry on {firstPt.label} — log another to see a trend line.
+                  </p>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -641,6 +767,24 @@ const BodyStats = () => {
                   {/* Detail panel — every stat recorded that day */}
                   {isOpen && (
                     <div id={`bodystat-detail-${e.id}`} className="px-3 pb-3 pt-1 border-t border-gray-200 dark:border-gray-700">
+                      {/* Provenance strip — measured vs added date distinction */}
+                      {isRichInBody(e) && (
+                        <div className="mt-2 rounded-lg bg-purple-50 dark:bg-purple-900/20 border border-purple-100 dark:border-purple-800 p-2 text-xs text-purple-900 dark:text-purple-200">
+                          <div className="font-medium flex flex-wrap items-center gap-x-2">
+                            <span>{e.sourceDevice ?? (e.source === 'inbody-270' ? 'InBody 270' : 'Body-composition scan')}</span>
+                            {e.inBodyScore !== undefined && (
+                              <span className="inline-block px-1.5 py-0.5 rounded bg-purple-100 dark:bg-purple-800/40 text-[11px]">
+                                Score {e.inBodyScore}{e.inBodyScoreMax ? `/${e.inBodyScoreMax}` : ''}
+                              </span>
+                            )}
+                          </div>
+                          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] opacity-90">
+                            {fmtDate(e.measuredAt) && <span>Measured: {fmtDate(e.measuredAt)}</span>}
+                            {fmtDate(e.importedAt, 'd MMM yyyy') && <span>Added: {fmtDate(e.importedAt, 'd MMM yyyy')}</span>}
+                          </div>
+                        </div>
+                      )}
+
                       {detail.length === 0 ? (
                         <p className="text-sm text-gray-500 italic">No stats recorded on this date.</p>
                       ) : (
@@ -653,6 +797,88 @@ const BodyStats = () => {
                           ))}
                         </div>
                       )}
+
+                      {/* Body-composition card grid — InBody primary fields */}
+                      {(e.totalBodyWaterL !== undefined || e.proteinMassKg !== undefined || e.mineralMassKg !== undefined
+                        || e.bodyFatMassKg !== undefined || e.skeletalMuscleMassKg !== undefined
+                        || e.fatFreeMassKg !== undefined || e.bmi !== undefined || e.smiKgM2 !== undefined) && (
+                        <div className="mt-3">
+                          <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300 mb-1">
+                            Body Composition
+                          </div>
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                            {e.totalBodyWaterL      !== undefined && <StatTile label="Total Body Water" value={`${e.totalBodyWaterL} L`} />}
+                            {e.proteinMassKg        !== undefined && <StatTile label="Protein Mass"     value={`${e.proteinMassKg} kg`} />}
+                            {e.mineralMassKg        !== undefined && <StatTile label="Mineral Mass"     value={`${e.mineralMassKg} kg`} />}
+                            {e.bodyFatMassKg        !== undefined && <StatTile label="Body Fat Mass"    value={`${e.bodyFatMassKg} kg`} />}
+                            {e.skeletalMuscleMassKg !== undefined && <StatTile label="Skeletal Muscle"  value={`${e.skeletalMuscleMassKg} kg`} />}
+                            {e.fatFreeMassKg        !== undefined && <StatTile label="Fat-Free Mass"    value={`${e.fatFreeMassKg} kg`} />}
+                            {e.bmi                  !== undefined && <StatTile label="BMI"              value={`${e.bmi}`} />}
+                            {e.smiKgM2              !== undefined && <StatTile label="Skel. Muscle Idx" value={`${e.smiKgM2} kg/m²`} />}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Metabolic estimates — explicit device-estimate caveat */}
+                      {(e.basalMetabolicRateKcal !== undefined || e.recommendedCalorieIntakeKcal !== undefined
+                        || e.waistHipRatio !== undefined || e.visceralFatLevel !== undefined
+                        || e.obesityDegreePercent !== undefined) && (
+                        <div className="mt-3">
+                          <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300 mb-1">
+                            Metabolic Estimates
+                          </div>
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                            {e.basalMetabolicRateKcal       !== undefined && <StatTile label="BMR"           value={`${e.basalMetabolicRateKcal} kcal/d`} />}
+                            {e.recommendedCalorieIntakeKcal !== undefined && <StatTile label="Recom. Intake" value={`${e.recommendedCalorieIntakeKcal} kcal/d`} />}
+                            {e.waistHipRatio                !== undefined && <StatTile label="Waist/Hip"     value={`${e.waistHipRatio}`} />}
+                            {e.visceralFatLevel             !== undefined && <StatTile label="Visceral Fat"  value={`${e.visceralFatLevel}`} />}
+                            {e.obesityDegreePercent         !== undefined && <StatTile label="Obesity Deg."  value={`${e.obesityDegreePercent}%`} />}
+                          </div>
+                          <p className="mt-1 text-[10px] text-gray-500 dark:text-gray-400 italic">
+                            Device estimate — not medical advice.
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Device weight-control suggestion */}
+                      {(e.targetWeightKg !== undefined || e.weightControlKg !== undefined
+                        || e.fatControlKg !== undefined || e.muscleControlKg !== undefined) && (
+                        <div className="mt-3">
+                          <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300 mb-1">
+                            Device Suggestion
+                          </div>
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                            {e.targetWeightKg  !== undefined && <StatTile label="Target Weight" value={`${e.targetWeightKg} kg`} />}
+                            {e.weightControlKg !== undefined && <StatTile label="Weight Δ"      value={`${e.weightControlKg > 0 ? '+' : ''}${e.weightControlKg} kg`} />}
+                            {e.fatControlKg    !== undefined && <StatTile label="Fat Δ"         value={`${e.fatControlKg > 0 ? '+' : ''}${e.fatControlKg} kg`} />}
+                            {e.muscleControlKg !== undefined && <StatTile label="Muscle Δ"     value={`${e.muscleControlKg > 0 ? '+' : ''}${e.muscleControlKg} kg`} />}
+                          </div>
+                          <p className="mt-1 text-[10px] text-gray-500 dark:text-gray-400 italic">
+                            InBody device estimate — not an automatic app target.
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Segmental lean */}
+                      {e.segmentalLean && e.segmentalLean.length > 0 && (
+                        <div className="mt-3">
+                          <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300 mb-1">
+                            Segmental Lean
+                          </div>
+                          <SegmentalGrid items={e.segmentalLean} kind="lean" />
+                        </div>
+                      )}
+
+                      {/* Segmental fat */}
+                      {e.segmentalFat && e.segmentalFat.length > 0 && (
+                        <div className="mt-3">
+                          <div className="text-[11px] font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300 mb-1">
+                            Segmental Fat
+                          </div>
+                          <SegmentalGrid items={e.segmentalFat} kind="fat" />
+                        </div>
+                      )}
+
                       {e.notes && (
                         <div className="mt-3 text-xs text-gray-600 dark:text-gray-300 italic border-l-2 border-gray-300 dark:border-gray-600 pl-2">
                           "{e.notes}"

@@ -413,10 +413,44 @@ export const isFoodNameDuplicate = (name: string, excludeId?: string): boolean =
 
 // ─── Body Stats ──────────────────────────────────────────────────────────────
 
+// One-time migration: rename deprecated field names in body-stat entries.
+// Handles data imported via importAllData() where the source backup used old
+// naming conventions (leftArmCirc, rightArmCirc, leftThigh, rightThigh, bfp).
+const BODY_STAT_RENAMES: [string, string][] = [
+  ['leftArmCirc',  'leftArm'],
+  ['rightArmCirc', 'rightArm'],
+  ['leftThigh',    'thighL'],
+  ['rightThigh',   'thighR'],
+  ['bfp',          'bodyFat'],
+];
+
+const _migrateBodyStatEntry = (raw: Record<string, unknown>): { entry: Record<string, unknown>; changed: boolean } => {
+  let changed = false;
+  const out: Record<string, unknown> = { ...raw };
+  for (const [oldKey, newKey] of BODY_STAT_RENAMES) {
+    if (oldKey in out && !(newKey in out)) {
+      out[newKey] = out[oldKey];
+      delete out[oldKey];
+      changed = true;
+    }
+  }
+  return { entry: out, changed };
+};
+
 export const getBodyStats = (): BodyStatEntry[] => {
   const stored = localStorage.getItem(STORAGE_KEYS.BODY_STATS);
-  if (stored) return JSON.parse(stored) as BodyStatEntry[];
-  return [];
+  if (!stored) return [];
+  const raw = JSON.parse(stored) as Record<string, unknown>[];
+  let needsSave = false;
+  const entries = raw.map(r => {
+    const { entry, changed } = _migrateBodyStatEntry(r);
+    if (changed) needsSave = true;
+    return entry as unknown as BodyStatEntry;
+  });
+  if (needsSave) {
+    localStorage.setItem(STORAGE_KEYS.BODY_STATS, JSON.stringify(entries));
+  }
+  return entries;
 };
 
 const _saveBodyStats = (entries: BodyStatEntry[]): void => {
@@ -448,4 +482,76 @@ export const updateBodyStatEntry = (id: string, updates: Partial<BodyStatEntry>)
   all.sort((a, b) => a.date.localeCompare(b.date));
   _saveBodyStats(all);
   return true;
+};
+
+// ─── Body-composition assessment importer (idempotent) ──────────────────────
+
+export interface AssessmentImportResult {
+  action: 'added' | 'enriched' | 'unchanged';
+  id: string;
+  enrichedFields?: string[];
+}
+
+/**
+ * Upsert an InBody-style body-composition assessment into `trainright_body_stats`.
+ *
+ * Idempotency: an entry is identified by `sourceFingerprint` when present,
+ * falling back to (date + no-fingerprint) so it enriches legacy entries.
+ * Re-importing the same scan produces no duplicate.
+ *
+ * Never overwrites a non-empty existing field. Only fills in fields that are
+ * undefined / null / '' on the existing row.
+ *
+ * `measuredAt` is preserved from the scan. `importedAt` is set on first
+ * creation only; subsequent re-imports leave it unchanged.
+ */
+export const importBodyAssessment = (
+  scan: Omit<BodyStatEntry, 'id'>,
+  nowIso: string = new Date().toISOString(),
+): AssessmentImportResult => {
+  const all = getBodyStats();
+
+  const byFingerprint = scan.sourceFingerprint
+    ? all.find((e) => e.sourceFingerprint && e.sourceFingerprint === scan.sourceFingerprint)
+    : undefined;
+  const sameDayLegacy = byFingerprint
+    ? undefined
+    : all.find((e) => e.date === scan.date && !e.sourceFingerprint);
+  const existing = byFingerprint ?? sameDayLegacy;
+
+  if (existing) {
+    const enrichedFields: string[] = [];
+    const merged: BodyStatEntry = { ...existing };
+    const existingRec = existing as unknown as Record<string, unknown>;
+    const mergedRec   = merged   as unknown as Record<string, unknown>;
+    for (const [k, v] of Object.entries(scan)) {
+      if (v === undefined || v === null) continue;
+      const cur = existingRec[k];
+      if (cur === undefined || cur === null || cur === '') {
+        mergedRec[k] = v;
+        enrichedFields.push(k);
+      }
+    }
+    if (!merged.importedAt) merged.importedAt = nowIso;
+    if (!merged.source) merged.source = scan.source;
+    if (!merged.sourceDevice) merged.sourceDevice = scan.sourceDevice;
+    if (!merged.sourceFingerprint) merged.sourceFingerprint = scan.sourceFingerprint;
+    if (!merged.measuredAt) merged.measuredAt = scan.measuredAt;
+
+    if (enrichedFields.length === 0 && existing.sourceFingerprint) {
+      return { action: 'unchanged', id: existing.id };
+    }
+    saveBodyStatEntry(merged);
+    return { action: 'enriched', id: existing.id, enrichedFields };
+  }
+
+  const id = scan.sourceFingerprint
+    ? `body-${scan.sourceFingerprint.replace(/[^a-zA-Z0-9-]/g, '_')}`
+    : `body-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  saveBodyStatEntry({
+    ...scan,
+    id,
+    importedAt: scan.importedAt ?? nowIso,
+  });
+  return { action: 'added', id };
 };

@@ -92,9 +92,33 @@ export interface DayStatus {
   progress: number; // percentage
 }
 
+// ─── Body-composition assessment (InBody and similar devices) ────────────────
+
+export type SegmentalRegion = 'leftArm' | 'rightArm' | 'trunk' | 'leftLeg' | 'rightLeg';
+export type SegmentalClassification = 'Low' | 'Normal' | 'Over' | 'Under' | 'High';
+
+export interface SegmentalMeasurement {
+  region: SegmentalRegion;
+  /** Mass in kg (lean OR fat depending on which array it lives in). */
+  massKg: number;
+  /** Device-reported percentage of reference. */
+  refPercent?: number;
+  /** Device classification text (Normal, Over, Under, etc.). */
+  classification?: SegmentalClassification;
+}
+
+export type BodyStatSource =
+  | 'manual'
+  | 'inbody-270'
+  | 'inbody-other'
+  | 'legacy-trainright'
+  | 'scale';
+
 export interface BodyStatEntry {
   id: string;
-  date: string; // YYYY-MM-DD
+  date: string; // YYYY-MM-DD — the measurement day (always set; existing field)
+
+  // ── Existing primary fields (unchanged) ──
   weight?: number; // kg
   bodyFat?: number; // %
   waist?: number; // cm
@@ -103,10 +127,61 @@ export interface BodyStatEntry {
   leftArm?: number; // cm
   rightArm?: number; // cm
   neck?: number; // cm
-  // Optional richer fields imported from older TrainRight backups. All are
-  // optional → existing stored entries deserialise unchanged.
+
+  // ── Added in 2026-06-06 legacy-import pass (unchanged) ──
   thighL?: number; // cm — left thigh circumference
   thighR?: number; // cm — right thigh circumference
   shoulderWidth?: number; // cm — bi-acromial width
+
+  // ── Body-composition assessment fields (additive, all optional) ──
+  /** ISO 8601 datetime when the measurement was taken on the device. Lets the
+   *  UI show "Measured: 26 May 2026 at 13:13" while `date` keeps the day key. */
+  measuredAt?: string;
+  /** ISO 8601 datetime when the record was first persisted into this app. */
+  importedAt?: string;
+  /** Where the entry came from. Defaults to 'manual' when unset. */
+  source?: BodyStatSource;
+  /** Source device label, e.g. "InBody 270". Distinct from `source` so we can
+   *  show a friendly device name without enumerating every model. */
+  sourceDevice?: string;
+  /** Stable fingerprint used for idempotent re-import — derived from
+   *  source + measuredAt + weight + smm + body fat %. */
+  sourceFingerprint?: string;
+
+  // ── Core body-composition values from InBody ──
+  totalBodyWaterL?: number;
+  proteinMassKg?: number;
+  mineralMassKg?: number;
+  bodyFatMassKg?: number;
+  skeletalMuscleMassKg?: number;
+  fatFreeMassKg?: number;
+  bmi?: number;
+  smiKgM2?: number; // skeletal muscle index
+  /** InBody score (typically 0–100). */
+  inBodyScore?: number;
+  inBodyScoreMax?: number;
+
+  // ── Metabolic / device estimates ──
+  basalMetabolicRateKcal?: number;
+  recommendedCalorieIntakeKcal?: number;
+  waistHipRatio?: number;
+  visceralFatLevel?: number;
+  obesityDegreePercent?: number;
+
+  // ── Device weight-control recommendations ──
+  targetWeightKg?: number;
+  weightControlKg?: number;
+  fatControlKg?: number;
+  muscleControlKg?: number;
+
+  // ── Segmental analysis ──
+  segmentalLean?: SegmentalMeasurement[];
+  segmentalFat?: SegmentalMeasurement[];
+
+  // ── Per-field review metadata for OCR / uncertain imports ──
+  needsReview?: boolean;
+  /** Field IDs that the user has not yet confirmed. UI can highlight them. */
+  reviewFields?: string[];
+
   notes?: string;
 }

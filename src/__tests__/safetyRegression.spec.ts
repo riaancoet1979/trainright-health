@@ -310,6 +310,138 @@ describe('legacy importTrainRightBackup extended coverage', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────
+// InBody body-composition assessment importer
+// ─────────────────────────────────────────────────────────────────
+
+describe('InBody assessment import', () => {
+  beforeEach(() => {
+    localStorage.removeItem('trainright_body_stats');
+  });
+
+  it('adds a new scan when none exists', async () => {
+    const { importBodyAssessment, getBodyStats } = await import('../utils/storage');
+    const { INBODY_2026_05_26 } = await import('../data/inbodyScans');
+
+    const result = importBodyAssessment(INBODY_2026_05_26, '2026-06-06T10:00:00Z');
+
+    expect(result.action).toBe('added');
+    const all = getBodyStats();
+    expect(all).toHaveLength(1);
+    const e = all[0];
+    expect(e.date).toBe('2026-05-26');
+    expect(e.measuredAt).toBe('2026-05-26T13:13:00');
+    expect(e.importedAt).toBe('2026-06-06T10:00:00Z');
+    expect(e.weight).toBe(83.6);
+    expect(e.skeletalMuscleMassKg).toBe(37.9);
+    expect(e.inBodyScore).toBe(83);
+    expect(e.segmentalLean).toHaveLength(5);
+    expect(e.segmentalFat).toHaveLength(5);
+    expect(e.source).toBe('inbody-270');
+    expect(e.sourceFingerprint).toBeDefined();
+  });
+
+  it('enriches the existing legacy 26 May entry without duplicating', async () => {
+    const { importBodyAssessment, getBodyStats, saveBodyStatEntry } = await import('../utils/storage');
+    const { INBODY_2026_05_26 } = await import('../data/inbodyScans');
+
+    // Pre-seed legacy partial entry: weight + bfp + smm, no fingerprint
+    saveBodyStatEntry({
+      id: 'legacy-may-26',
+      date: '2026-05-26',
+      weight: 83.6,
+      bodyFat: 19.7,
+      skeletalMuscleMassKg: 37.9,
+      leftArm: 3.89,
+      rightArm: 4.26,
+    });
+
+    const result = importBodyAssessment(INBODY_2026_05_26, '2026-06-06T10:00:00Z');
+
+    expect(result.action).toBe('enriched');
+    expect(result.enrichedFields).toBeDefined();
+    expect(result.enrichedFields!.length).toBeGreaterThan(0);
+
+    const all = getBodyStats();
+    const onDay = all.filter(e => e.date === '2026-05-26');
+    expect(onDay).toHaveLength(1); // no duplicate
+    const e = onDay[0];
+    expect(e.id).toBe('legacy-may-26'); // legacy id preserved
+    expect(e.weight).toBe(83.6);            // pre-existing value retained
+    expect(e.bodyFat).toBe(19.7);           // pre-existing value retained
+    expect(e.skeletalMuscleMassKg).toBe(37.9);
+    // Newly enriched fields from the scan
+    expect(e.totalBodyWaterL).toBe(49.3);
+    expect(e.bmi).toBe(26.4);
+    expect(e.inBodyScore).toBe(83);
+    expect(e.measuredAt).toBe('2026-05-26T13:13:00');
+    expect(e.source).toBe('inbody-270');
+    expect(e.sourceFingerprint).toBeDefined();
+  });
+
+  it('is idempotent — second import returns "unchanged"', async () => {
+    const { importBodyAssessment, getBodyStats } = await import('../utils/storage');
+    const { INBODY_2026_05_26 } = await import('../data/inbodyScans');
+
+    const first  = importBodyAssessment(INBODY_2026_05_26, '2026-06-06T10:00:00Z');
+    const second = importBodyAssessment(INBODY_2026_05_26, '2026-06-07T11:00:00Z');
+
+    expect(first.action).toBe('added');
+    expect(second.action).toBe('unchanged');
+    expect(second.id).toBe(first.id);
+    expect(getBodyStats()).toHaveLength(1);
+  });
+
+  it('does not overwrite a user-edited weight', async () => {
+    const { importBodyAssessment, getBodyStats, saveBodyStatEntry } = await import('../utils/storage');
+    const { INBODY_2026_05_26 } = await import('../data/inbodyScans');
+
+    // Pre-seed entry with a different user-recorded weight
+    saveBodyStatEntry({
+      id: 'user-edited-26-may',
+      date: '2026-05-26',
+      weight: 84.0, // different from scan's 83.6
+      bodyFat: 20.1, // different from scan's 19.7
+    });
+
+    const result = importBodyAssessment(INBODY_2026_05_26, '2026-06-06T10:00:00Z');
+
+    expect(result.action).toBe('enriched');
+    const e = getBodyStats().find(b => b.date === '2026-05-26')!;
+    expect(e.weight).toBe(84.0);   // user value preserved
+    expect(e.bodyFat).toBe(20.1);  // user value preserved
+    // Yet new fields were filled in
+    expect(e.totalBodyWaterL).toBe(49.3);
+    expect(e.skeletalMuscleMassKg).toBe(37.9);
+  });
+
+  it('preserves importedAt across re-imports', async () => {
+    const { importBodyAssessment, getBodyStats } = await import('../utils/storage');
+    const { INBODY_2026_05_26 } = await import('../data/inbodyScans');
+
+    importBodyAssessment(INBODY_2026_05_26, '2026-06-06T10:00:00Z');
+    importBodyAssessment(INBODY_2026_05_26, '2026-06-07T11:00:00Z');
+    importBodyAssessment(INBODY_2026_05_26, '2026-06-08T12:00:00Z');
+
+    const e = getBodyStats()[0];
+    expect(e.importedAt).toBe('2026-06-06T10:00:00Z'); // first import timestamp preserved
+  });
+
+  it('uses a stable id derived from fingerprint', async () => {
+    const { importBodyAssessment } = await import('../utils/storage');
+    const { INBODY_2026_05_26 } = await import('../data/inbodyScans');
+
+    const r1 = importBodyAssessment(INBODY_2026_05_26, '2026-06-06T10:00:00Z');
+    expect(r1.action).toBe('added');
+    expect(r1.id).toBe('body-inbody-270_2026-05-26_w83_6_smm37_9_bfp19_7');
+
+    // Even after a clean wipe, re-importing produces the same id (deterministic)
+    localStorage.removeItem('trainright_body_stats');
+    const r2 = importBodyAssessment(INBODY_2026_05_26, '2026-06-07T10:00:00Z');
+    expect(r2.id).toBe(r1.id);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────
 // L-04 — Bodyweight bounds (the clamp lives in Train.tsx; verify the constants)
 // ─────────────────────────────────────────────────────────────────
 
