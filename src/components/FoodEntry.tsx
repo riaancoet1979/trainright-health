@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Search, Plus, X, Minus, Apple, Scale } from 'lucide-react';
+import { Search, Plus, X, Minus, Apple, Scale, CalendarDays } from 'lucide-react';
+import { format, isToday } from 'date-fns';
 import type { FoodItem, FoodEntry as FoodEntryType } from '../types';
 import { calculatePortionNutrients, addFoodEntry, getAllFoods } from '../utils/storage';
 
@@ -95,9 +96,19 @@ const FoodEntry = ({ selectedDate, onEntryAdded }: FoodEntryProps) => {
 
   const nutrients = calculateNutrients();
 
+  const loggingToday = isToday(selectedDate);
+
   return (
     <div className="card">
       <h3 className="text-xl font-bold mb-4">Add Food</h3>
+      {!loggingToday && (
+        <div className="flex items-center gap-2 mb-4 px-3 py-2 bg-amber-50 dark:bg-amber-900/30 border border-amber-300 dark:border-amber-700 rounded-lg text-sm text-amber-800 dark:text-amber-200">
+          <CalendarDays className="w-4 h-4 flex-shrink-0" />
+          <span>
+            Logging to <strong>{format(selectedDate, 'EEE d MMM')}</strong> — not today.
+          </span>
+        </div>
+      )}
 
       {/* Food Search */}
       <div className="relative mb-4">

@@ -192,10 +192,10 @@ export const addFoodEntry = (date: Date | string, foodEntry: FoodEntry): void =>
   const dailyEntry = getDailyEntry(dateStr);
 
   dailyEntry.foodEntries.push(foodEntry);
-  dailyEntry.totalCalories = dailyEntry.foodEntries.reduce((sum, entry) => sum + entry.calories, 0);
-  dailyEntry.totalProtein = dailyEntry.foodEntries.reduce((sum, entry) => sum + entry.protein, 0);
-  dailyEntry.totalCarbs = dailyEntry.foodEntries.reduce((sum, entry) => sum + entry.carbs, 0);
-  dailyEntry.totalFats = dailyEntry.foodEntries.reduce((sum, entry) => sum + entry.fats, 0);
+  dailyEntry.totalCalories = Math.round(dailyEntry.foodEntries.reduce((sum, entry) => sum + entry.calories, 0));
+  dailyEntry.totalProtein = Math.round(dailyEntry.foodEntries.reduce((sum, entry) => sum + entry.protein, 0) * 10) / 10;
+  dailyEntry.totalCarbs = Math.round(dailyEntry.foodEntries.reduce((sum, entry) => sum + entry.carbs, 0) * 10) / 10;
+  dailyEntry.totalFats = Math.round(dailyEntry.foodEntries.reduce((sum, entry) => sum + entry.fats, 0) * 10) / 10;
   dailyEntry.netCalories = dailyEntry.totalCalories - dailyEntry.totalExerciseCalories;
 
   saveDailyEntry(dailyEntry);
@@ -206,10 +206,10 @@ export const deleteFoodEntry = (date: Date | string, entryId: string): void => {
   const dailyEntry = getDailyEntry(dateStr);
 
   dailyEntry.foodEntries = dailyEntry.foodEntries.filter(entry => entry.id !== entryId);
-  dailyEntry.totalCalories = dailyEntry.foodEntries.reduce((sum, entry) => sum + entry.calories, 0);
-  dailyEntry.totalProtein = dailyEntry.foodEntries.reduce((sum, entry) => sum + entry.protein, 0);
-  dailyEntry.totalCarbs = dailyEntry.foodEntries.reduce((sum, entry) => sum + entry.carbs, 0);
-  dailyEntry.totalFats = dailyEntry.foodEntries.reduce((sum, entry) => sum + entry.fats, 0);
+  dailyEntry.totalCalories = Math.round(dailyEntry.foodEntries.reduce((sum, entry) => sum + entry.calories, 0));
+  dailyEntry.totalProtein = Math.round(dailyEntry.foodEntries.reduce((sum, entry) => sum + entry.protein, 0) * 10) / 10;
+  dailyEntry.totalCarbs = Math.round(dailyEntry.foodEntries.reduce((sum, entry) => sum + entry.carbs, 0) * 10) / 10;
+  dailyEntry.totalFats = Math.round(dailyEntry.foodEntries.reduce((sum, entry) => sum + entry.fats, 0) * 10) / 10;
   dailyEntry.netCalories = dailyEntry.totalCalories - dailyEntry.totalExerciseCalories;
 
   saveDailyEntry(dailyEntry);
