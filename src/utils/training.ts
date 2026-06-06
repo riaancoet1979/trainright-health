@@ -5,6 +5,7 @@
 // ============================================================
 
 import { format } from 'date-fns';
+import { saveBodyStatEntry, getBodyStats } from './storage';
 import type {
   TrainingData, SessionLog, DayKey, Readiness, ProgramDay,
   ProgramExercise, MacroTargets, DayTypeTargets, BodyMetric, LoggedSet,
@@ -315,6 +316,21 @@ export const importTrainRightBackup = (json: string): MigrationResult => {
           waist: typeof m.waist === 'string' ? parseFloat(m.waist) || '' : m.waist ?? '',
           chest: typeof m.chest === 'string' ? parseFloat(m.chest) || '' : m.chest ?? '',
         });
+        // Also write to the BodyStats component's store (trainright_body_stats)
+        const existing = getBodyStats();
+        if (!existing.some((e) => e.date === m.date)) {
+          const bf = typeof m.bfp === 'string' ? parseFloat(m.bfp) : m.bfp;
+          const ws = typeof m.waist === 'string' ? parseFloat(m.waist) : m.waist;
+          const ch = typeof m.chest === 'string' ? parseFloat(m.chest) : m.chest;
+          saveBodyStatEntry({
+            id: `body-legacy-${m.date}-${Math.random().toString(36).slice(2, 6)}`,
+            date: m.date,
+            weight: w,
+            ...(bf && !isNaN(bf) ? { bodyFat: bf } : {}),
+            ...(ws && !isNaN(ws) ? { waist: ws } : {}),
+            ...(ch && !isNaN(ch) ? { chest: ch } : {}),
+          });
+        }
         metricsImported++;
       }
     }
@@ -332,6 +348,7 @@ const ALL_KEYS = [
   'nutrition_tracker_user_settings',
   'nutrition_tracker_custom_foods',
   'nutrition_tracker_achievements',
+  'trainright_body_stats',
   TRAINING_KEY,
 ];
 
