@@ -1,14 +1,14 @@
 import { useState, useCallback } from 'react';
 import { format } from 'date-fns';
-import { Dumbbell, CheckCircle2, Circle, AlertTriangle, Scale, Play } from 'lucide-react';
-import type { Readiness, RedFlagState } from '../types/training';
+import { Dumbbell, CheckCircle2, Circle, AlertTriangle, Scale, Play, CalendarDays, RotateCcw } from 'lucide-react';
+import type { Readiness, RedFlagState, DayKey } from '../types/training';
 import {
   getSessionForDate, getSessionLog, updateSessionLog, adjustForReadiness,
   applyPrerequisites, effectiveReadiness,
   getLastExerciseLog, setProgramStartDate, getTrainingData, addBodyMetric,
-  latestBodyweight, getTargetsForDate, dateKey,
+  latestBodyweight, getTargetsForDate, dateKey, getDayKeyForDate,
 } from '../utils/training';
-import { WARMUP, TREADMILL_NOTE, PROGRAM_NAME } from '../data/program';
+import { WARMUP, TREADMILL_NOTE, PROGRAM_NAME, PHASES, getPhaseForWeek } from '../data/program';
 import { suggestReadiness, lastSyncLabel, isHealthDataStale } from '../utils/health';
 import useRestTimer from '../hooks/useRestTimer';
 import { CoachDaily } from './Coach';
@@ -35,9 +35,17 @@ const Train = ({ selectedDate, onUpdate }: TrainProps) => {
   const restTimer = useRestTimer(getUserSettings().restTimerSeconds ?? 120);
 
   const data = getTrainingData();
-  const session = getSessionForDate(selectedDate);
   const log = getSessionLog(selectedDate);
   const key = dateKey(selectedDate);
+
+  // Day-key override: when the user picks "train Monday's workout today" we
+  // resolve the session using that override instead of the date's natural
+  // day-of-week. The override lives on the SessionLog so it persists across
+  // refreshes and the weekly coach review counts it as a planned session.
+  const naturalDayKey = getDayKeyForDate(selectedDate);
+  const dayKeyOverride = log?.dayKeyOverride;
+  const session = getSessionForDate(selectedDate, { dayKeyOverride });
+  const isOverridden = Boolean(dayKeyOverride) && dayKeyOverride !== naturalDayKey;
 
   const pickedReadiness: Readiness = log?.readiness ?? 'green';
   const redFlags: RedFlagState | undefined = log?.redFlags;
@@ -90,6 +98,29 @@ const Train = ({ selectedDate, onUpdate }: TrainProps) => {
     refresh();
   };
 
+  /** Pick which day's workout to do today. Setting it to the natural day of
+   *  the date clears the override so the schedule "snaps back" by itself. */
+  const setDayOverride = (k: DayKey) => {
+    updateSessionLog(selectedDate, (l) => {
+      if (k === naturalDayKey) {
+        delete l.dayKeyOverride;
+      } else {
+        l.dayKeyOverride = k;
+      }
+      // Keep the log's denormalised dayKey in sync with what was actually
+      // trained — analytics + last-exercise-log queries look at this field.
+      l.dayKey = k;
+    });
+    refresh();
+  };
+  const clearDayOverride = () => {
+    updateSessionLog(selectedDate, (l) => {
+      delete l.dayKeyOverride;
+      if (naturalDayKey) l.dayKey = naturalDayKey;
+    });
+    refresh();
+  };
+
   const targets = getTargetsForDate(selectedDate);
   const bw = latestBodyweight();
 
@@ -109,6 +140,17 @@ const Train = ({ selectedDate, onUpdate }: TrainProps) => {
             C {targets.dailyCarbs}g · F {targets.dailyFats}g
           </div>
         </div>
+
+        {/* Want to train anyway? Let the user pick a workout to do today. */}
+        <DayPickerCard
+          date={selectedDate}
+          currentKey={null}
+          naturalKey={naturalDayKey}
+          onPick={setDayOverride}
+          onReset={null}
+          intro="Want to train today instead? Pick a workout — it logs against today's date."
+        />
+
         <BodyweightCard key={key} bw={bw} date={key} onSaved={refresh} />
       </div>
     );
@@ -250,7 +292,34 @@ const Train = ({ selectedDate, onUpdate }: TrainProps) => {
         <div className="mt-4 text-sm bg-primary-50 dark:bg-gray-700 rounded-lg px-3 py-2 text-gray-800 dark:text-gray-200 font-medium">
           Training-day nutrition: {targets.dailyCalories} kcal · P {targets.dailyProtein}g · C {targets.dailyCarbs}g · F {targets.dailyFats}g · Water 2.5–3 L
         </div>
+
+        {/* "Train a different day's workout" override badge — shown only when
+            the user has actively overridden the natural schedule. */}
+        {isOverridden && (
+          <div className="mt-3 text-xs rounded-lg px-3 py-2 bg-amber-50 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 flex items-center justify-between gap-2">
+            <span>
+              Override active — running <strong>{dayKeyOverride?.toUpperCase()}</strong>'s
+              workout. Scheduled today: <strong>{naturalDayKey ? naturalDayKey.toUpperCase() : 'REST'}</strong>.
+            </span>
+            <button
+              onClick={clearDayOverride}
+              className="inline-flex items-center gap-1 px-2 py-1 rounded bg-amber-100 dark:bg-amber-800/40 hover:bg-amber-200 dark:hover:bg-amber-700/50 font-medium"
+            >
+              <RotateCcw className="w-3 h-3" /> Reset
+            </button>
+          </div>
+        )}
       </div>
+
+      {/* Day-picker card — lets the user swap workouts on a training day too. */}
+      <DayPickerCard
+        date={selectedDate}
+        currentKey={session.day.key}
+        naturalKey={naturalDayKey}
+        onPick={setDayOverride}
+        onReset={isOverridden ? clearDayOverride : null}
+        intro="Switch to a different day's workout for today:"
+      />
 
       {/* H-02: acute-symptom screen lives BETWEEN the session header and the
           warm-up so the user must scroll past it. Persists into the session log
@@ -378,6 +447,99 @@ const Train = ({ selectedDate, onUpdate }: TrainProps) => {
       {/* `key={key}` re-mounts the card on date change so its internal input
           state resets without a useEffect (M-02). */}
       <BodyweightCard key={key} bw={bw} date={key} onSaved={refresh} />
+    </div>
+  );
+};
+
+// ─── Day-picker card ──────────────────────────────────────────────────────────
+//
+// Lets the user override which day's workout to run on a given date. Pulls
+// the day list from the resolved phase so labels stay in sync with the
+// program data (Phase 1 "baseline" labels differ from Phase 2 etc.).
+
+interface DayPickerProps {
+  date: Date;
+  /** The day currently being rendered (null = rest day, no override yet). */
+  currentKey: DayKey | null;
+  /** The date's natural day-of-week key (null = Wed/Fri/Sun rest day). */
+  naturalKey: DayKey | null;
+  onPick: (k: DayKey) => void;
+  /** When non-null, render a "Reset to schedule" link. */
+  onReset: (() => void) | null;
+  intro: string;
+}
+
+const DayPickerCard = ({ date, currentKey, naturalKey, onPick, onReset, intro }: DayPickerProps) => {
+  // Resolve which phase's day labels to show. If the date is before program
+  // start (no week), fall back to Phase 1 labels so the picker still works.
+  const weekNum = getTrainingData().programStartDate
+    ? PHASES.find(p => p.weeks.includes(1))?.weeks[0] && undefined // satisfy lint
+    : undefined;
+  void weekNum;
+  // Pick the phase from the natural date when possible.
+  let phase = PHASES[0];
+  try {
+    // Use a runtime week-num lookup via getWeekNum if start is set
+    const td = getTrainingData();
+    if (td.programStartDate) {
+      const dStr = format(date, 'yyyy-MM-dd');
+      const s = new Date(td.programStartDate + 'T00:00:00');
+      const dow = (s.getDay() + 6) % 7;
+      s.setDate(s.getDate() - dow);
+      const d = new Date(dStr + 'T00:00:00');
+      const diff = Math.floor((d.getTime() - s.getTime()) / 86400000);
+      if (diff >= 0) {
+        const wk = Math.min(Math.floor(diff / 7) + 1, 16);
+        phase = getPhaseForWeek(wk);
+      }
+    }
+  } catch { /* fall back to phase 1 */ }
+
+  const days = phase.days; // [{ key, label, ... }]
+
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow">
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="font-semibold text-sm text-gray-800 dark:text-gray-200 flex items-center gap-2">
+          <CalendarDays className="w-4 h-4" /> Workout for {format(date, 'EEE d MMM')}
+        </h3>
+        {onReset && (
+          <button
+            onClick={onReset}
+            className="text-xs text-gray-500 dark:text-gray-400 underline hover:text-gray-700 dark:hover:text-gray-200 flex items-center gap-1"
+          >
+            <RotateCcw className="w-3 h-3" /> Reset to schedule
+          </button>
+        )}
+      </div>
+      <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">{intro}</p>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        {days.map(d => {
+          const isCurrent = d.key === currentKey;
+          const isNatural = d.key === naturalKey;
+          return (
+            <button
+              key={d.key}
+              onClick={() => onPick(d.key)}
+              className={`px-3 py-2 rounded-lg text-left text-xs border transition-colors ${
+                isCurrent
+                  ? 'bg-primary-600 text-white border-primary-600'
+                  : 'bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-200 border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600'
+              }`}
+            >
+              <div className="font-bold uppercase tracking-wide text-[11px] flex items-center gap-1">
+                {d.key}
+                {isNatural && (
+                  <span className={`text-[9px] font-medium px-1 rounded ${isCurrent ? 'bg-white/20' : 'bg-gray-200 dark:bg-gray-600'}`}>
+                    today
+                  </span>
+                )}
+              </div>
+              <div className="mt-0.5 leading-tight opacity-90">{d.label}</div>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 };

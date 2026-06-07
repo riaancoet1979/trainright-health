@@ -145,10 +145,12 @@ export const weeklyReview = (dateInWeek: Date | string): WeeklyReview => {
   let sessionsCompleted = 0;
   const readinessCounts = { green: 0, yellow: 0, red: 0 };
   for (const ds of weekDates) {
-    const sess = getSessionForDate(ds);
+    // Honor the user's per-day workout override so a Sunday log running
+    // Monday's session still counts in the weekly planned/completed totals.
+    const log = td.logs[ds];
+    const sess = getSessionForDate(ds, { dayKeyOverride: log?.dayKeyOverride });
     if (sess) {
       sessionsPlanned++;
-      const log = td.logs[ds];
       if (log?.completed) sessionsCompleted++;
       if (log?.readiness) readinessCounts[log.readiness]++;
     }

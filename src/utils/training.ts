@@ -78,11 +78,22 @@ export interface ResolvedSession {
   isPastProgram: boolean; // beyond week 16
 }
 
+export interface SessionResolveOpts {
+  /**
+   * When set, resolve the session using this day key instead of the date's
+   * natural day-of-week. Lets the user run e.g. Monday's workout on a Sunday.
+   */
+  dayKeyOverride?: DayKey | null;
+}
+
 /** The scheduled session for a date, or null (rest day / before start / no start). */
-export const getSessionForDate = (date: Date | string): ResolvedSession | null => {
+export const getSessionForDate = (
+  date: Date | string,
+  opts?: SessionResolveOpts,
+): ResolvedSession | null => {
   const weekNum = getWeekNum(date);
   if (weekNum === null) return null;
-  const dayKey = getDayKeyForDate(date);
+  const dayKey = opts?.dayKeyOverride ?? getDayKeyForDate(date);
   if (!dayKey) return null;
   const effectiveWeek = Math.min(weekNum, 16);
   const phase = getPhaseForWeek(effectiveWeek);

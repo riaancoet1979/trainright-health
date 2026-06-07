@@ -14,7 +14,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   hasActiveRedFlag, effectiveReadiness, meetsPrerequisite, applyPrerequisites,
-  setProgramStartDate, updateSessionLog, TRAINING_KEY,
+  setProgramStartDate, updateSessionLog, getSessionForDate, TRAINING_KEY,
 } from '../utils/training';
 import {
   hoursSinceSync, isHealthDataStale, lastSyncLabel, HEALTH_KEY, saveHealthMetrics,
@@ -306,6 +306,59 @@ describe('legacy importTrainRightBackup extended coverage', () => {
       .find(b => b.date === '2026-05-26')!;
     expect(e.weight).toBe(83.6);
     expect(e.leftArm).toBeUndefined(); // empty string was not coerced to 0
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────
+// "Train any day" — per-date day-key override
+// ─────────────────────────────────────────────────────────────────
+
+describe('per-date day-key override', () => {
+  it('Sunday with no override resolves to no session (rest day)', () => {
+    setProgramStartDate('2026-04-06'); // Mon week 1
+    expect(getSessionForDate('2026-06-07')).toBeNull(); // 2026-06-07 is a Sunday
+  });
+
+  it('Sunday with an override resolves to that day\'s session', () => {
+    setProgramStartDate('2026-04-06');
+    // 2026-06-07 is a Sunday but the user wants to do Monday's workout.
+    const sess = getSessionForDate('2026-06-07', { dayKeyOverride: 'mon' });
+    expect(sess).not.toBeNull();
+    expect(sess!.day.key).toBe('mon');
+    expect(sess!.weekNum).toBeGreaterThan(0);
+  });
+
+  it('null override behaves identically to no override', () => {
+    setProgramStartDate('2026-04-06');
+    const base = getSessionForDate('2026-04-13'); // Mon week 2
+    const withNull = getSessionForDate('2026-04-13', { dayKeyOverride: null });
+    expect(withNull?.day.key).toBe(base?.day.key);
+  });
+
+  it('override on a training day swaps the loaded workout', () => {
+    setProgramStartDate('2026-04-06');
+    // 2026-04-13 is a Monday — override to load Tuesday's workout instead.
+    const natural = getSessionForDate('2026-04-13');
+    const overridden = getSessionForDate('2026-04-13', { dayKeyOverride: 'tue' });
+    expect(natural?.day.key).toBe('mon');
+    expect(overridden?.day.key).toBe('tue');
+  });
+
+  it('weeklyReview honors override — Sunday completion counts as planned + completed', async () => {
+    const { weeklyReview } = await import('../utils/coach');
+    setProgramStartDate('2026-04-06');
+    // Week of Mon 2026-04-13 contains Sun 2026-04-19. User trained Monday's
+    // workout on Sunday and marked it complete.
+    updateSessionLog('2026-04-19', (l) => {
+      l.dayKeyOverride = 'mon';
+      l.dayKey = 'mon';
+      l.completed = true;
+      l.readiness = 'green';
+    });
+    const review = weeklyReview('2026-04-19');
+    // Natural week has 4 planned (mon/tue/thu/sat) + 1 from the override = 5.
+    expect(review.sessionsPlanned).toBe(5);
+    expect(review.sessionsCompleted).toBeGreaterThanOrEqual(1);
   });
 });
 

@@ -107,6 +107,14 @@ export interface ExerciseLog {
 
 export interface SessionLog {
   dayKey: DayKey;
+  /**
+   * When the user manually picks a different day's workout for this date
+   * (e.g. trains Monday's session on Sunday), this carries the chosen day key.
+   * Engines and the UI treat it as the source of truth for "what was trained".
+   * Optional + additive — undefined means "follow the natural day-of-week
+   * schedule".
+   */
+  dayKeyOverride?: DayKey;
   weekNum: number;
   phase: number;
   readiness?: Readiness;
