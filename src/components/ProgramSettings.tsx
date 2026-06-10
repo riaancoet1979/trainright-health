@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Download, Upload, RotateCcw, Dumbbell } from 'lucide-react';
 import type { DayTypeTargets } from '../types/training';
 import {
@@ -15,6 +15,9 @@ const ProgramSettings = ({ onSaved }: Props) => {
   const [msg, setMsg] = useState('');
   const data = getTrainingData();
   const [startDate, setStartDate] = useState(data.programStartDate ?? '');
+  const fullBackupRef = useRef<HTMLInputElement>(null);
+  const garminRef = useRef<HTMLInputElement>(null);
+  const oldTrainRightRef = useRef<HTMLInputElement>(null);
 
   const upd = (
     type: 'training' | 'rest',
@@ -126,24 +129,42 @@ const ProgramSettings = ({ onSaved }: Props) => {
         >
           <Download className="w-4 h-4 inline mr-1" />Export all data
         </button>
-        <label className="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 px-3 py-2 rounded-lg text-sm cursor-pointer">
+
+        {/* Full backup import */}
+        <button
+          onClick={() => fullBackupRef.current?.click()}
+          className="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 px-3 py-2 rounded-lg text-sm cursor-pointer"
+        >
           <Upload className="w-4 h-4 inline mr-1" />Import full backup
-          <input type="file" accept=".json" className="hidden"
-            onChange={(e) => handleFile(e, (t) => `Imported keys: ${importAllData(t).join(', ') || 'none found'}`)} />
-        </label>
-        <label className="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 px-3 py-2 rounded-lg text-sm cursor-pointer">
+        </button>
+        <input ref={fullBackupRef} type="file" accept=".json" style={{display:'none'}}
+          onChange={(e) => handleFile(e, (t) => {
+            const keys = importAllData(t);
+            return keys.length > 0 ? `✅ Imported ${keys.length} data section(s). Reload to see changes.` : '⚠️ No recognised data found in file.';
+          })} />
+
+        {/* Garmin import */}
+        <button
+          onClick={() => garminRef.current?.click()}
+          className="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 px-3 py-2 rounded-lg text-sm cursor-pointer"
+        >
           <Upload className="w-4 h-4 inline mr-1" />Import Garmin JSON
-          <input type="file" accept=".json" className="hidden"
-            onChange={(e) => handleFile(e, (t) => `Merged ${mergeGarminData(JSON.parse(t))} days of Garmin data.`)} />
-        </label>
-        <label className="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 px-3 py-2 rounded-lg text-sm cursor-pointer">
+        </button>
+        <input ref={garminRef} type="file" accept=".json" style={{display:'none'}}
+          onChange={(e) => handleFile(e, (t) => `Merged ${mergeGarminData(JSON.parse(t))} days of Garmin data.`)} />
+
+        {/* Old TrainRight import */}
+        <button
+          onClick={() => oldTrainRightRef.current?.click()}
+          className="bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 px-3 py-2 rounded-lg text-sm cursor-pointer"
+        >
           <Upload className="w-4 h-4 inline mr-1" />Import old TrainRight (trainright_v1)
-          <input type="file" accept=".json,.txt" className="hidden"
-            onChange={(e) => handleFile(e, (t) => {
-              const r = importTrainRightBackup(t);
-              return `Imported ${r.sessionsImported} sessions, ${r.metricsImported} body metrics.`;
-            })} />
-        </label>
+        </button>
+        <input ref={oldTrainRightRef} type="file" accept=".json,.txt" style={{display:'none'}}
+          onChange={(e) => handleFile(e, (t) => {
+            const r = importTrainRightBackup(t);
+            return `Imported ${r.sessionsImported} sessions, ${r.metricsImported} body metrics.`;
+          })} />
       </div>
       <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">
         Old TrainRight: open the old app → browser console → <code>copy(localStorage.getItem('trainright_v1'))</code> → paste into a .json file → import here.
