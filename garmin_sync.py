@@ -1,7 +1,8 @@
 """
 TrainRight Health — Garmin Connect sync
 Pulls the last 14 days of steps, sleep, resting HR and HRV from Garmin
-Connect and writes garmin_health.json, which the app auto-loads.
+Connect and writes gh-sync.json, which the app auto-loads. The output
+filename MUST match GARMIN_FILE in src/utils/health.ts.
 
 Setup (once):
     pip install garminconnect
@@ -9,13 +10,15 @@ Setup (once):
                                       token is saved so you won't log in again)
 
 Run (daily, or schedule with Task Scheduler / run_garmin_sync.bat):
-    python garmin_sync.py            (compact log)
-    python garmin_sync.py --verbose  (prints per-day metrics — for debugging)
+    python garmin_sync.py                 (compact log, writes public/ + dist/)
+    python garmin_sync.py --verbose       (prints per-day metrics — for debugging)
+    python garmin_sync.py --public-only   (CI mode: writes only public/, build copies it)
 
 Privacy:
-    The output file is per-device personal health data. Both target paths
-    (public/, dist/) are gitignored — the file is never committed and never
-    deployed to public GitHub Pages. See audit/SECURITY_PRIVACY.md.
+    The output file is per-device personal health data. The local paths
+    (public/, dist/) are gitignored. In CI (Option A), the file IS bundled
+    into the GitHub Pages artifact — the URL is reachable but unguessable
+    enough to deter casual scanning; do not treat as private.
 """
 
 import json
@@ -31,14 +34,18 @@ except ImportError:
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 TOKEN_DIR = os.path.join(HERE, ".garmin_tokens")
-# Written to: public/ (dev server picks it up) and dist/ (production build
-# serves it). Both paths are gitignored — see .gitignore. Never commit these.
-OUT_FILES = [
-    os.path.join(HERE, "public", "garmin_health.json"),
-    os.path.join(HERE, "dist", "garmin_health.json"),
+# Filename MUST match GARMIN_FILE in src/utils/health.ts.
+OUT_NAME = "gh-sync.json"
+# Local runs: write to public/ (dev server) AND dist/ (preview server).
+# CI runs: --public-only, then vite build copies public/ into dist/.
+OUT_FILES_FULL = [
+    os.path.join(HERE, "public", OUT_NAME),
+    os.path.join(HERE, "dist", OUT_NAME),
 ]
+OUT_FILES_PUBLIC = [os.path.join(HERE, "public", OUT_NAME)]
 DAYS = 14
 VERBOSE = "--verbose" in sys.argv or "-v" in sys.argv
+PUBLIC_ONLY = "--public-only" in sys.argv
 
 
 def login() -> Garmin:
@@ -108,7 +115,8 @@ def main() -> None:
             print(f"{ds}: {len(entry)} metric(s)" if entry else f"{ds}: no data")
 
     payload = {"source": "garmin", "syncedAt": today.isoformat(), "days": out}
-    for out_file in OUT_FILES:
+    out_files = OUT_FILES_PUBLIC if PUBLIC_ONLY else OUT_FILES_FULL
+    for out_file in out_files:
         os.makedirs(os.path.dirname(out_file), exist_ok=True)
         with open(out_file, "w", encoding="utf-8") as f:
             json.dump(payload, f, indent=1)

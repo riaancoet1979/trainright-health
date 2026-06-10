@@ -5,8 +5,13 @@ npm-install.log
 .vite-temp/
 __pycache__/
 
-# Personal health data exported by garmin_sync.py — must never be committed
-# (would be deployed to public GitHub Pages). See audit/SECURITY_PRIVACY.md.
+# Personal health data exported by garmin_sync.py — never commit locally.
+# CI workflow .github/workflows/garmin-sync.yml writes & deploys this file
+# directly to the Pages artifact; the local copy must stay out of git.
+# See audit/SECURITY_PRIVACY.md.
+public/gh-sync.json
+/gh-sync.json
+# Legacy filename (pre-Phase-1 rename) — kept so old workflows can't leak it.
 public/garmin_health.json
 /garmin_health.json
 

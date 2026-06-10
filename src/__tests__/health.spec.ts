@@ -1,5 +1,8 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { mergeGarminData, suggestReadiness, getHealthMetrics } from '../utils/health';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import {
+  mergeGarminData, suggestReadiness, getHealthMetrics, saveHealthMetrics,
+  hoursSinceSync, isHealthDataStale, lastSyncLabel, GARMIN_FILE,
+} from '../utils/health';
 import { getDailyEntry } from '../utils/storage';
 
 beforeEach(() => {
@@ -74,5 +77,50 @@ describe('suggestReadiness', () => {
   it('ignores RHR rule without enough baseline days', () => {
     mergeGarminData({ days: { '2026-06-05': { sleepHours: 7.5, rhr: 70 } } });
     expect(suggestReadiness('2026-06-05')?.suggestion).toBe('green');
+  });
+});
+
+// ── Sync staleness — drives the StalenessBanner on the Train tab ──────────────
+describe('sync staleness', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-10T12:00:00Z'));
+  });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it('returns null hours and "never" when nothing has synced', () => {
+    expect(hoursSinceSync()).toBeNull();
+    expect(lastSyncLabel()).toBe('never');
+    expect(isHealthDataStale()).toBe(true); // null counts as stale
+  });
+
+  it('reports recent sync as fresh', () => {
+    saveHealthMetrics({ syncedAt: new Date('2026-06-10T08:00:00Z').toISOString(), days: {} });
+    expect(hoursSinceSync()).toBeCloseTo(4, 0);
+    expect(lastSyncLabel()).toBe('4 h ago');
+    expect(isHealthDataStale()).toBe(false);
+    expect(isHealthDataStale(2)).toBe(true); // custom threshold
+  });
+
+  it('reports 49h-old sync as stale (default 48h threshold)', () => {
+    saveHealthMetrics({ syncedAt: new Date('2026-06-08T11:00:00Z').toISOString(), days: {} });
+    expect(isHealthDataStale()).toBe(true);
+    expect(lastSyncLabel()).toBe('2 d ago');
+  });
+
+  it('handles malformed syncedAt gracefully', () => {
+    saveHealthMetrics({ syncedAt: 'not-a-date', days: {} });
+    expect(hoursSinceSync()).toBeNull();
+    expect(lastSyncLabel()).toBe('never');
+    expect(isHealthDataStale()).toBe(true);
+  });
+});
+
+// ── Filename contract with garmin_sync.py ──
+describe('GARMIN_FILE constant', () => {
+  it('matches the OUT_NAME baked into garmin_sync.py — they must stay in sync', () => {
+    // If you rename one, rename the other. This test exists so the rename
+    // can't ship half-done. See garmin_sync.py: OUT_NAME.
+    expect(GARMIN_FILE).toBe('gh-sync.json');
   });
 });

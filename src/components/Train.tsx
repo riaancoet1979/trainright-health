@@ -58,7 +58,9 @@ const Train = ({ selectedDate, onUpdate }: TrainProps) => {
   // ── No program started yet ──
   if (!data.programStartDate) {
     return (
-      <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow">
+      <div className="space-y-4">
+        <StalenessBanner />
+        <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow">
         <h2 className="text-xl font-bold mb-2 text-gray-900 dark:text-white flex items-center gap-2">
           <Dumbbell className="w-6 h-6" /> {PROGRAM_NAME}
         </h2>
@@ -80,6 +82,7 @@ const Train = ({ selectedDate, onUpdate }: TrainProps) => {
           >
             <Play className="w-4 h-4" /> Start program
           </button>
+        </div>
         </div>
       </div>
     );
@@ -128,6 +131,7 @@ const Train = ({ selectedDate, onUpdate }: TrainProps) => {
   if (!session) {
     return (
       <div className="space-y-4">
+        <StalenessBanner />
         <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow">
           <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-1">
             {format(selectedDate, 'EEEE d MMM')} — Rest day
@@ -201,6 +205,7 @@ const Train = ({ selectedDate, onUpdate }: TrainProps) => {
 
   return (
     <div className="space-y-4">
+      <StalenessBanner />
       {/* Session header */}
       <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow">
         <div className="flex justify-between items-start flex-wrap gap-2">
@@ -598,6 +603,29 @@ const BodyweightCard = ({ bw, date, onSaved }: BwProps) => {
         </p>
       )}
       <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">Weekly trend matters, not the daily number.</p>
+    </div>
+  );
+};
+
+// ─── Staleness banner ────────────────────────────────────────────────────────
+//
+// Surfaces a visible warning at the top of the Train tab when the Garmin/Apple
+// sync hasn't run in >48h. Readiness suggestions rely on recent sleep & RHR,
+// so stale data degrades the recommendation quality silently — this banner
+// makes that degradation explicit.
+const StalenessBanner = () => {
+  if (!isHealthDataStale()) return null;
+  const label = lastSyncLabel();
+  return (
+    <div
+      role="status"
+      className="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-xl p-3 text-sm text-amber-800 dark:text-amber-200 flex items-start gap-2"
+    >
+      <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" aria-hidden />
+      <div>
+        <strong>Garmin sync is stale</strong> — last synced {label}.
+        Readiness suggestions may not reflect current sleep/RHR.
+      </div>
     </div>
   );
 };

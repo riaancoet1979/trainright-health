@@ -1,0 +1,84 @@
+name: Garmin sync → Pages
+
+# Daily cron pulls the last 14 days of steps/sleep/RHR/HRV from Garmin Connect
+# and redeploys the GitHub Pages site with the JSON bundled in. The live PWA
+# fetches gh-sync.json on every open and absorbs the new data.
+#
+# Setup (one-time, by hand — see HANDOFF section in Phase 1 instructions):
+#   1. Locally: tar + base64 the .garmin_tokens/ dir contents.
+#   2. Add the base64 blob as repo secret GARMIN_TOKENS_B64.
+#   3. Optionally run this workflow once via "Run workflow" to verify.
+#
+# The cron auto-refreshes the token in-memory each run; the persisted token in
+# the secret is the refresh token (typically valid ~1 year). When it expires,
+# this job fails and the Train tab's StalenessBanner will surface it within 48h.
+
+on:
+  schedule:
+    # 04:30 UTC daily = 06:30 SAST. Cron in CI is fuzzy by ±10 min; that's fine.
+    - cron: '30 4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Same group as deploy.yml so they serialize instead of fighting for Pages.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  sync-build-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install garminconnect
+        run: pip install --quiet garminconnect
+
+      - name: Restore Garmin tokens from secret
+        env:
+          GARMIN_TOKENS_B64: ${{ secrets.GARMIN_TOKENS_B64 }}
+        run: |
+          if [ -z "$GARMIN_TOKENS_B64" ]; then
+            echo "::error::GARMIN_TOKENS_B64 secret not set. See garmin-sync.yml header for one-time setup."
+            exit 1
+          fi
+          mkdir -p .garmin_tokens
+          echo "$GARMIN_TOKENS_B64" | base64 -d | tar -xz -C .garmin_tokens
+          echo "Restored token files:"
+          ls -la .garmin_tokens
+
+      - name: Run Garmin sync (writes public/gh-sync.json)
+        run: python garmin_sync.py --public-only
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci --include=dev
+      - run: npm run build
+
+      - name: Verify gh-sync.json is in the build output
+        run: |
+          test -s dist/gh-sync.json || { echo "::error::dist/gh-sync.json missing or empty"; exit 1; }
+          echo "Bundled $(wc -c < dist/gh-sync.json) bytes of Garmin data."
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+      - id: deployment
+        uses: actions/deploy-pages@v4
