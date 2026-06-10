@@ -34,7 +34,7 @@ describe('program data', () => {
   });
 
   it('all hanging/dip/landmine work is flagged painFreeOnly where it loads the shoulder overhead or in support', () => {
-    const mustBePainFree = ['scap_pull_supported', 'pullup_eccentric', 'strict_pullup', 'dips', 'weighted_dips', 'landmine_press'];
+    const mustBePainFree = ['scap_pull_supported', 'pullup_eccentric', 'strict_pullup', 'dips', 'weighted_dips', 'landmine_press', 'dead_hang_supported', 'dragon_flag'];
     for (const p of PHASES) {
       for (const d of p.days) {
         for (const ex of d.exercises) {

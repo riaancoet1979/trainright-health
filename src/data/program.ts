@@ -111,49 +111,56 @@ export const PHASES: ProgramPhase[] = [
 
   // ────────────────────────────────────────────────────────
   // PHASE 2 — WEEKS 2–5: FOUNDATION
+  // Calibrated 2026-06-10 after assessment week. Phase-2 sessions are
+  // labelled A/B/C/D to match the rotation model (see SESSION_LETTER
+  // map below) — internal day keys (mon/tue/thu/sat) are preserved
+  // for backward compatibility with logs from the calendar-driven era.
   // ────────────────────────────────────────────────────────
   {
     phase: 2, weeks: [2, 3, 4, 5], label: 'Phase 2 — Foundation (Weeks 2–5)',
     focus: 'Scap control, pain-free hanging build, push/pull balance, pistol + L-sit groundwork. Double progression: hit top reps on all sets → progress.',
     days: [
       {
-        key: 'mon', label: 'Lower + Core', goal: 'Build squat strength and single-leg control.',
+        key: 'mon', label: 'A — Lower + Core', goal: 'Build squat strength and single-leg control.',
         exercises: [
-          { id: 'goblet_squat', name: 'Goblet Squat', sets: 4, repsSpec: '×8–12', equipment: 'DB/KB', category: 'squat', rest: '90 s', rir: '2–3', progression: 'At 4×12 → heavier DB or barell back squat' },
-          { id: 'box_pistol', name: 'Box Pistol', sets: 3, repsSpec: '×6 / side', perSide: true, equipment: 'Box/Bench', category: 'skill', rest: '90 s', rir: '2', progression: 'Lower the box each week if clean', yellowSkip: true },
-          { id: 'sl_glute_bridge', name: 'Single-Leg Glute Bridge', sets: 3, repsSpec: '×12 / side', perSide: true, equipment: 'BW', category: 'hinge', rest: '60 s', rir: '2' },
-          { id: 'hollow_hold', name: 'Hollow Hold', sets: 3, repsSpec: '20–30 s', timed: true, equipment: 'BW', category: 'core', rest: '60 s', progression: 'At 3×30 s → hollow rocks' },
-          { id: 'reverse_lunge', name: 'Reverse Lunge (DB)', sets: 3, repsSpec: '×8 / side', perSide: true, equipment: 'DB', category: 'lunge', rest: '90 s', rir: '2', yellowSkip: true },
+          { id: 'goblet_squat', name: 'Goblet Squat', sets: 4, repsSpec: '×8–12', equipment: 'DB/KB', category: 'squat', rest: '90 s', rir: '2–3', cues: 'Start 16–20 kg. Week 1 @10 kg was far too light. RIR 2–3.', progression: 'At 4×12 → heavier DB or barbell back squat' },
+          { id: 'box_pistol', name: 'Box Pistol', sets: 3, repsSpec: '×6 / side', perSide: true, equipment: 'Box/Bench', category: 'skill', rest: '90 s', rir: '2', progression: 'Lower the box once all sets clean.', yellowSkip: true },
+          { id: 'sl_glute_bridge', name: 'Single-Leg Glute Bridge', sets: 3, repsSpec: '×12 / side', perSide: true, equipment: 'BW', category: 'hinge', rest: '60 s', rir: '2', cues: '2 s pause at top.' },
+          { id: 'hollow_rock', name: 'Hollow Rocks', sets: 3, repsSpec: '×12–15', equipment: 'BW', category: 'core', rest: '60 s', cues: 'Earned: held 3×45 s in assessment. Lower back stays pressed down.', regression: 'Hollow hold 20–30 s (id: hollow_hold)' },
+          { id: 'reverse_lunge', name: 'Reverse Lunge (DB)', sets: 3, repsSpec: '×8 / side', perSide: true, equipment: 'DB', category: 'lunge', rest: '90 s', rir: '2', cues: 'Start 10 kg DBs.', yellowSkip: true },
         ],
       },
       {
-        key: 'tue', label: 'Pull + Shoulder rehab', goal: 'Reduce pull-up assistance, build pain-free hang tolerance.',
+        key: 'tue', label: 'B — Pull + Shoulder rehab', goal: 'Reduce pull-up assistance, build pain-free hang tolerance.',
         exercises: [
           { id: 'band_pullup', name: 'Band-Assisted Pull-Up', sets: 4, repsSpec: '×5–8', equipment: 'Band + Bar', category: 'pullup', rest: '2 min', rir: '2', progression: 'At 4×8 → slow 3 s eccentric, then less band stretch' },
           { id: 'inverted_row', name: 'Inverted Row', sets: 4, repsSpec: '×8–12', equipment: 'Barbell + Rack', category: 'row', rest: '90 s', rir: '2', progression: 'Lower bar → feet on box' },
-          { id: 'scap_pull_supported', name: 'Scapular Pulls (feet supported)', sets: 3, repsSpec: '×8', equipment: 'Bar + Box', category: 'pullup', rest: '60 s', painFreeOnly: true, progression: 'Less foot support ONLY at pain ≤ 2/10' },
-          { id: 'single_arm_row', name: 'Single-Arm DB Row', sets: 3, repsSpec: '×10 / side', perSide: true, equipment: 'DB', category: 'row', rest: '90 s', rir: '2', leftFocus: true, yellowSkip: true },
+          { id: 'scap_pull_supported', name: 'Scapular Pulls (feet supported)', sets: 2, repsSpec: '×5', equipment: 'Bar + Box', category: 'pullup', rest: '60 s', painFreeOnly: true, cues: 'REGRESSED: pain in week 1. Maximum foot support, partial ROM, only at pain ≤2/10 — otherwise do band scap depressions instead.', progression: 'Less foot support ONLY at pain ≤ 2/10' },
+          { id: 'dead_hang_supported', name: 'Dead Hang (feet supported)', sets: 3, repsSpec: '15–20 s', timed: true, equipment: 'Bar + Box', category: 'pullup', rest: '90 s', painFreeOnly: true, cues: 'Tolerated 3×15 s in week 1. Feet take load as needed. Stop above 2/10. This builds toward the ≥30 s hang gate for strict pull-ups.' },
+          { id: 'single_arm_row', name: 'Single-Arm DB Row', sets: 3, repsSpec: '×10 / side', perSide: true, equipment: 'DB', category: 'row', rest: '90 s', rir: '2', leftFocus: true, cues: '16–20 kg — 10 kg was too light.', yellowSkip: true },
           ...REHAB_BLOCK,
         ],
       },
       {
-        key: 'thu', label: 'Push + Core', goal: 'Press strength + dip volume, shoulder-safe lines only.',
+        key: 'thu', label: 'C — Push + Core', goal: 'Press strength + dip volume, shoulder-safe lines only.',
         exercises: [
-          { id: 'db_bench', name: 'Flat DB Bench Press', sets: 4, repsSpec: '×8–10', equipment: 'DB + Bench', category: 'bench', rest: '2 min', rir: '2' },
-          { id: 'dips', name: 'Dips', sets: 3, repsSpec: '×5–8', equipment: 'Bars', category: 'dip', rest: '2 min', rir: '2', painFreeOnly: true, cues: 'Depth only as pain-free. Build reps before depth.', regression: 'Bench dips' },
+          { id: 'db_bench', name: 'Flat DB Bench Press', sets: 4, repsSpec: '×8–10', equipment: 'DB + Bench', category: 'bench', rest: '2 min', rir: '2', cues: 'Pick a weight where 10 reps = RIR 2 (~15–17.5 kg/hand to start).' },
+          { id: 'dips', name: 'Dips', sets: 3, repsSpec: '×5–8', equipment: 'Bars', category: 'dip', rest: '2 min', rir: '2', painFreeOnly: true, cues: 'Depth only as pain-free. Build reps before depth. +1 rep per session while ≤2/10.', regression: 'Bench dips' },
           { id: 'pushup', name: 'Push-Up', sets: 3, repsSpec: '×8–15', equipment: 'BW', category: 'bench', rest: '90 s', rir: '2', progression: 'At 3×15 → feet elevated' },
-          { id: 'landmine_press', name: 'Landmine Press', sets: 3, repsSpec: '×8 / side', perSide: true, equipment: 'Landmine', category: 'press', rest: '90 s', rir: '2', painFreeOnly: true, leftFocus: true, cues: 'Only pressing line allowed. Stop on any pain.', yellowSkip: true },
+          { id: 'landmine_press', name: 'Landmine Press', sets: 3, repsSpec: '×8 / side', perSide: true, equipment: 'Landmine', category: 'press', rest: '90 s', rir: '2', painFreeOnly: true, leftFocus: true, cues: 'Add 2.5–5 kg — bar-only ×15 was pain-free in week 1. Stop on any pain.', yellowSkip: true },
+          { id: 'cg_floor_press', name: 'Close-Grip Floor Press (triceps)', sets: 3, repsSpec: '×10–12', equipment: 'Barbell', category: 'bench', rest: '90 s', rir: '2', cues: 'Shoulder-safe triceps line. REPLACES all overhead/behind-head extensions — those are banned (pain 2→4/10 in week 1).' },
           { id: 'dead_bug', name: 'Dead Bug', sets: 3, repsSpec: '×10 / side', perSide: true, equipment: 'BW', category: 'core', rest: '60 s' },
         ],
       },
       {
-        key: 'sat', label: 'Hinge + Skills + Conditioning', goal: 'Posterior chain, L-sit build, engine work.',
+        key: 'sat', label: 'D — Hinge + Skills + Conditioning', goal: 'Posterior chain, L-sit build, engine work.',
         exercises: [
-          { id: 'kb_swing', name: 'KB Swing', sets: 4, repsSpec: '×15', equipment: 'KB', category: 'hinge', rest: '90 s', rir: '2' },
-          { id: 'db_rdl', name: 'DB/BB Romanian Deadlift', sets: 4, repsSpec: '×8–10', equipment: 'DB/Barbell', category: 'hinge', rest: '2 min', rir: '2' },
-          { id: 'tuck_lsit', name: 'Tuck L-Sit Hold', sets: 4, repsSpec: '10–15 s', timed: true, equipment: 'Dip bars', category: 'skill', rest: '90 s', progression: 'At 4×15 s → flatten back, lift knees higher', yellowSkip: true },
+          { id: 'kb_swing', name: 'KB Swing', sets: 4, repsSpec: '×15', equipment: 'KB', category: 'hinge', rest: '90 s', rir: '2', cues: '16 kg if available — 10 kg too light for ballistic work.' },
+          { id: 'db_rdl', name: 'DB/BB Romanian Deadlift', sets: 4, repsSpec: '×8–10', equipment: 'DB/Barbell', category: 'hinge', rest: '2 min', rir: '2', cues: 'Move to barbell RDL 40–50 kg.' },
+          { id: 'tuck_lsit', name: 'Tuck L-Sit Hold', sets: 4, repsSpec: '10–15 s', timed: true, equipment: 'Dip bars', category: 'skill', rest: '90 s', cues: 'Strong in week 1 (4×20 s) — now flatten back, lift knees higher; quality over duration.', progression: 'At 4×15 s → flatten back, lift knees higher', yellowSkip: true },
           { id: 'side_plank', name: 'Side Plank', sets: 3, repsSpec: '25–30 s / side', perSide: true, timed: true, equipment: 'BW', category: 'core', rest: '60 s' },
           { id: 'mobility_block', name: 'Mobility: deep squat, thoracic, wrist prep', sets: 1, repsSpec: '8 min', timed: true, equipment: 'BW', category: 'mobility', rest: '—' },
+          { id: 'dragon_flag', name: 'Dragon Flag (optional finisher)', sets: 2, repsSpec: '×5 slow', equipment: 'Bench', category: 'core', rest: '90 s', painFreeOnly: true, yellowSkip: true, cues: 'Only at shoulder ≤2/10. Slow eccentrics, no arch.' },
         ],
       },
     ],
