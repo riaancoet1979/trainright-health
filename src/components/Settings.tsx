@@ -3,6 +3,7 @@ import { Settings as SettingsIcon, Save, Moon, Sun, Plus, Edit2, Trash2, Downloa
 import { getUserSettings, saveUserSettings, getCustomFoods, addCustomFood, updateCustomFood, deleteCustomFood, exportCustomFoods, importCustomFoods, isFoodNameDuplicate, exportFitnessData, importFitnessData, resetAllFitnessData } from '../utils/storage';
 import type { FoodItem } from '../types';
 import { useTheme } from '../contexts/useTheme';
+import { useConfirm, useToast } from './ui';
 
 interface SettingsProps {
   onSettingsSaved: () => void;
@@ -10,6 +11,8 @@ interface SettingsProps {
 
 const Settings = ({ onSettingsSaved }: SettingsProps) => {
   const { theme, toggleTheme } = useTheme();
+  const { confirm, confirmChoice } = useConfirm();
+  const { showToast } = useToast();
   const [settings, setSettings] = useState(getUserSettings());
   const [customFoods, setCustomFoods] = useState<FoodItem[]>(getCustomFoods());
   const [dailyCaloriesInput, setDailyCaloriesInput] = useState<string>(String(getUserSettings().targets.dailyCalories));
@@ -218,10 +221,16 @@ const Settings = ({ onSettingsSaved }: SettingsProps) => {
     resetFoodForm();
   };
 
-  const handleDeleteFood = (id: string) => {
-    if (confirm('Are you sure you want to delete this custom food?')) {
+  const handleDeleteFood = async (id: string) => {
+    const ok = await confirm({
+      message: 'Are you sure you want to delete this custom food?',
+      confirmLabel: 'Delete',
+      confirmVariant: 'danger',
+    });
+    if (ok) {
       deleteCustomFood(id);
       setCustomFoods(getCustomFoods());
+      showToast('Custom food deleted', { kind: 'success' });
     }
   };
 
@@ -244,23 +253,33 @@ const Settings = ({ onSettingsSaved }: SettingsProps) => {
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       const content = e.target?.result as string;
 
-      // Ask user for import mode
-      const mode = confirm(
-        'Import Mode:\n\n' +
-        'OK = Merge with existing custom foods (adds imported foods)\n' +
-        'Cancel = Replace all custom foods (deletes existing, adds imported)'
-      ) ? 'merge' : 'replace';
+      const mode = await confirmChoice<'merge' | 'replace' | null>({
+        title: 'Import custom foods',
+        message:
+          'How should we apply this import?\n\n' +
+          'Merge: keep existing foods and add the imported ones.\n' +
+          'Replace: delete existing foods, then add the imported ones.',
+        choices: [
+          { label: 'Merge', value: 'merge', variant: 'primary' },
+          { label: 'Replace', value: 'replace', variant: 'danger' },
+          { label: 'Cancel', value: null, variant: 'secondary' },
+        ],
+      });
+      if (mode === null) return;
 
       const result = importCustomFoods(content, mode);
 
       if (result.success) {
         setCustomFoods(getCustomFoods());
-        alert(`Successfully imported ${result.count} custom food${result.count !== 1 ? 's' : ''}!`);
+        showToast(
+          `Imported ${result.count} custom food${result.count !== 1 ? 's' : ''}.`,
+          { kind: 'success' },
+        );
       } else {
-        alert(`Import failed: ${result.error}`);
+        showToast(`Import failed: ${result.error}`, { kind: 'error' });
       }
     };
     reader.readAsText(file);
@@ -333,8 +352,8 @@ const Settings = ({ onSettingsSaved }: SettingsProps) => {
                   a.download = `fitness-data-${new Date().toISOString().split('T')[0]}.json`;
                   a.click();
                   URL.revokeObjectURL(url);
-                } catch (e) {
-                  alert('Export failed');
+                } catch {
+                  showToast('Export failed', { kind: 'error' });
                 }
               }}
               className="btn-secondary px-3"
@@ -357,16 +376,29 @@ const Settings = ({ onSettingsSaved }: SettingsProps) => {
                 const file = e.target.files?.[0];
                 if (!file) return;
                 const reader = new FileReader();
-                reader.onload = (ev) => {
+                reader.onload = async (ev) => {
                   const content = ev.target?.result as string;
-                  const mode = confirm(
-                    'Restore mode:\n\nOK = Merge with existing fitness data (keeps nutrition logs)\nCancel = Replace all fitness data (overwrites existing)'
-                  ) ? 'merge' : 'replace';
+                  const mode = await confirmChoice<'merge' | 'replace' | null>({
+                    title: 'Restore fitness backup',
+                    message:
+                      'How should we apply this restore?\n\n' +
+                      'Merge: keep existing fitness data and overlay imported days.\n' +
+                      'Replace: overwrite all existing fitness data.',
+                    choices: [
+                      { label: 'Merge', value: 'merge', variant: 'primary' },
+                      { label: 'Replace', value: 'replace', variant: 'danger' },
+                      { label: 'Cancel', value: null, variant: 'secondary' },
+                    ],
+                  });
+                  if (mode === null) return;
                   const result = importFitnessData(content, mode);
                   if (result.success) {
-                    alert(`Successfully restored ${result.count} day${result.count !== 1 ? 's' : ''} of fitness data!`);
+                    showToast(
+                      `Restored ${result.count} day${result.count !== 1 ? 's' : ''} of fitness data.`,
+                      { kind: 'success' },
+                    );
                   } else {
-                    alert(`Restore failed: ${result.error}`);
+                    showToast(`Restore failed: ${result.error}`, { kind: 'error' });
                   }
                 };
                 reader.readAsText(file);
@@ -375,10 +407,16 @@ const Settings = ({ onSettingsSaved }: SettingsProps) => {
             />
 
             <button
-              onClick={() => {
-                if (!confirm('Reset all fitness data? This cannot be undone.')) return;
+              onClick={async () => {
+                const ok = await confirm({
+                  title: 'Reset fitness data?',
+                  message: 'This cannot be undone.',
+                  confirmLabel: 'Reset',
+                  confirmVariant: 'danger',
+                });
+                if (!ok) return;
                 resetAllFitnessData();
-                alert('Fitness data reset');
+                showToast('Fitness data reset', { kind: 'success' });
               }}
               className="btn-secondary px-3 text-red-600"
             >
@@ -601,9 +639,13 @@ const Settings = ({ onSettingsSaved }: SettingsProps) => {
               onClick={async () => {
                 if ('Notification' in window) {
                   await Notification.requestPermission();
-                  alert(`Notification permission: ${Notification.permission}`);
+                  showToast(`Notification permission: ${Notification.permission}`, {
+                    kind: Notification.permission === 'granted' ? 'success' : 'info',
+                  });
                 } else {
-                  alert('Notifications are not supported in this browser');
+                  showToast('Notifications are not supported in this browser', {
+                    kind: 'warning',
+                  });
                 }
               }}
               className="btn-primary px-3"

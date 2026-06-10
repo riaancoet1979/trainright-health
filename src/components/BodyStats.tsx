@@ -9,6 +9,7 @@ import {
 } from '../utils/storage';
 import { INBODY_2026_05_26 } from '../data/inbodyScans';
 import type { BodyStatEntry, SegmentalMeasurement } from '../types';
+import { useConfirm, useToast } from './ui';
 
 // ─── Tiny inline SVG line-chart ───────────────────────────────────────────────
 
@@ -212,6 +213,8 @@ const EMPTY_FORM = {
 type FormState = typeof EMPTY_FORM;
 
 const BodyStats = () => {
+  const { confirm } = useConfirm();
+  const { showToast } = useToast();
   const [tick, setTick] = useState(0);
   const bump = useCallback(() => setTick(t => t + 1), []);
 
@@ -330,10 +333,19 @@ const BodyStats = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleDelete = (id: string) => {
-    if (!confirm('Delete this entry?')) return;
+  const handleDelete = async (id: string) => {
+    if (
+      !(await confirm({
+        message: 'Delete this entry?',
+        confirmLabel: 'Delete',
+        confirmVariant: 'danger',
+      }))
+    ) {
+      return;
+    }
     deleteBodyStatEntry(id);
     bump();
+    showToast('Entry deleted', { kind: 'success' });
   };
 
   /** Import the hard-coded 26 May 2026 InBody-270 scan. Idempotent: re-running
@@ -341,12 +353,13 @@ const BodyStats = () => {
    *  duplicates a previously-imported scan. */
   const handleImportInBody = () => {
     const r = importBodyAssessment(INBODY_2026_05_26);
-    alert(
+    showToast(
       r.action === 'added'
-        ? '✅ InBody scan added to 26 May 2026.'
+        ? 'InBody scan added to 26 May 2026.'
         : r.action === 'enriched'
-        ? `✅ Enriched existing 26 May entry with ${r.enrichedFields?.length ?? 0} new fields.`
+        ? `Enriched existing 26 May entry with ${r.enrichedFields?.length ?? 0} new fields.`
         : 'No change — scan is already up to date.',
+      { kind: r.action === 'unchanged' ? 'info' : 'success' },
     );
     bump();
     setExpandedId(r.id);

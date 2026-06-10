@@ -1,17 +1,21 @@
 import { useState, useEffect } from 'react';
 import { getAchievements, clearAchievements, exportFitnessData, resetAllFitnessData } from '../utils/storage';
+import { useConfirm, useToast } from './ui';
 
 const Achievements = () => {
   const [items, setItems] = useState(getAchievements());
+  const { confirm } = useConfirm();
+  const { showToast } = useToast();
 
   useEffect(() => {
     setItems(getAchievements());
   }, []);
 
-  const handleClear = () => {
-    if (!confirm('Clear all achievements?')) return;
+  const handleClear = async () => {
+    if (!(await confirm('Clear all achievements?'))) return;
     clearAchievements();
     setItems([]);
+    showToast('Achievements cleared', { kind: 'success' });
   };
 
   const handleExport = () => {
@@ -25,11 +29,20 @@ const Achievements = () => {
     URL.revokeObjectURL(url);
   };
 
-  const handleReset = () => {
-    if (!confirm('Reset all fitness data? This cannot be undone.')) return;
+  const handleReset = async () => {
+    if (
+      !(await confirm({
+        title: 'Reset fitness data?',
+        message: 'This cannot be undone.',
+        confirmLabel: 'Reset',
+        confirmVariant: 'danger',
+      }))
+    ) {
+      return;
+    }
     resetAllFitnessData();
-    // small refresh
     setItems(getAchievements());
+    showToast('Fitness data reset', { kind: 'success' });
   };
 
   if (items.length === 0) return null;
