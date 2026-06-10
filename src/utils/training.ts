@@ -666,11 +666,17 @@ const ALL_KEYS = [
 ];
 
 export const exportAllData = (): string => {
-  const out: Record<string, unknown> = { exportedAt: new Date().toISOString(), app: 'trainright-health' };
+  const exportedAt = new Date().toISOString();
+  const out: Record<string, unknown> = { exportedAt, app: 'trainright-health' };
   for (const k of ALL_KEYS) {
     const raw = localStorage.getItem(k);
     out[k] = raw ? JSON.parse(raw) : null;
   }
+  // Stamp the last-export marker so the Settings backup-nudge banner clears.
+  // Imported lazily to avoid a circular dependency between training.ts and
+  // migrations.ts at module-init time.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  import('./migrations').then((m) => m.markExported(exportedAt)).catch(() => { /* non-blocking */ });
   return JSON.stringify(out, null, 2);
 };
 

@@ -15,6 +15,13 @@ import { getDailyEntry } from './utils/storage';
 import type { DailyEntry } from './types';
 import usePushupReminders from './hooks/usePushupReminders';
 import { fetchGarminFile } from './utils/health';
+import { runMigrations } from './utils/migrations';
+
+// Stamp schema versions for every tracked localStorage store on first boot of
+// versioned code. Runs at module init (before React mounts) so the rest of
+// the app can rely on the meta blob being present. Idempotent — subsequent
+// boots are a no-op.
+runMigrations();
 
 type View = 'calendar' | 'train' | 'add' | 'analytics' | 'fitness' | 'body' | 'settings';
 

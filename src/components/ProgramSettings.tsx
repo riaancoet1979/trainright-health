@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { Download, Upload, RotateCcw, Dumbbell } from 'lucide-react';
+import { Download, Upload, RotateCcw, Dumbbell, AlertTriangle } from 'lucide-react';
 import type { DayTypeTargets } from '../types/training';
 import {
   getDayTypeTargets, saveDayTypeTargets, getTrainingData,
@@ -7,6 +7,7 @@ import {
 } from '../utils/training';
 import { mergeGarminData } from '../utils/health';
 import { DEFAULT_DAY_TYPE_TARGETS, LEAN_GAIN_TARGETS } from '../data/program';
+import { daysSinceLastExport, BACKUP_NUDGE_DAYS, shouldNudgeBackup } from '../utils/migrations';
 
 interface Props { onSaved: () => void }
 
@@ -120,6 +121,21 @@ const ProgramSettings = ({ onSaved }: Props) => {
       </p>
 
       <hr className="my-4 border-gray-200 dark:border-gray-700" />
+
+      {shouldNudgeBackup() && (() => {
+        const days = daysSinceLastExport();
+        const label = days === null
+          ? 'You have never exported a backup.'
+          : `Last backup was ${days} day${days === 1 ? '' : 's'} ago.`;
+        return (
+          <div className="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-lg p-3 mb-3 text-sm text-amber-800 dark:text-amber-200 flex items-start gap-2">
+            <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" aria-hidden />
+            <div>
+              <strong>Back up your data.</strong> {label} Aim for one export every {BACKUP_NUDGE_DAYS} days — losing months of training logs to a browser cache wipe is not recoverable.
+            </div>
+          </div>
+        );
+      })()}
 
       <h4 className="font-semibold text-gray-900 dark:text-white mb-2 text-sm">Data migration & backup</h4>
       <div className="flex flex-wrap gap-2">
