@@ -96,4 +96,19 @@ describe('weeklyReview', () => {
     expect(r.avgProtein).toBe(100);
     expect(r.recommendations.some((x) => x.text.includes('Average protein'))).toBe(true);
   });
+
+  it('counts hollow_hold history toward hollow_rock progression (alias)', () => {
+    // Phase-2 hollow_rock prescribes 3 sets ×12–15 reps (top = 15). Earlier
+    // sessions were logged under the Phase-1 ID hollow_hold; the alias map
+    // should let those count when the user hits top on both.
+    const td = getTrainingData();
+    const sets = Array.from({ length: 3 }, () => ({ weight: '', reps: '15', done: true }));
+    td.logs['2026-06-08'] = { dayKey: 'mon', weekNum: 1, phase: 1, completed: true, notes: '', exercises: { hollow_hold: { sets } } };
+    td.logs['2026-06-15'] = { dayKey: 'mon', weekNum: 2, phase: 2, completed: true, notes: '', exercises: { hollow_hold: { sets } } };
+    saveTrainingData(td);
+    const r = weeklyReview(MON);
+    const rec = r.exerciseRecs.find((x) => x.exerciseName.includes('Hollow Rocks'));
+    expect(rec).toBeDefined();
+    expect(rec?.action).toBe('progress');
+  });
 });

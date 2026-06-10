@@ -13,6 +13,34 @@ import {
   getTrainingData, getSessionForDate, getTargetsForDate, dateKey, getWeekNum,
 } from './training';
 import { getPhaseForWeek } from '../data/program';
+import type { SessionLog, LoggedSet } from '../types/training';
+
+/**
+ * Historical exercise IDs whose logs should also count toward the current ID's
+ * progression analysis. Used when a phase moves from a regression to its
+ * earned progression: Phase 1 logged `hollow_hold`; Phase 2 prescribes
+ * `hollow_rock`, but the user's first hollow_rock weeks should still be
+ * informed by the hold history.
+ *
+ * Keys are CURRENT (program-side) IDs; values are HISTORICAL IDs to fall back
+ * to when the current ID has no log on a given session.
+ */
+export const EXERCISE_ID_ALIASES: Record<string, string[]> = {
+  hollow_rock: ['hollow_hold'],
+};
+
+/** Resolve the logged set list for an exercise, consulting the alias map
+ *  when the canonical ID has no entry on this session. */
+const setsForExercise = (
+  log: SessionLog,
+  exId: string,
+): LoggedSet[] | undefined => {
+  if (log.exercises[exId]) return log.exercises[exId].sets;
+  for (const alias of EXERCISE_ID_ALIASES[exId] ?? []) {
+    if (log.exercises[alias]) return log.exercises[alias].sets;
+  }
+  return undefined;
+};
 
 export type InsightLevel = 'good' | 'warn' | 'action';
 
@@ -239,7 +267,7 @@ export const weeklyReview = (dateInWeek: Date | string): WeeklyReview => {
         const top = topOfRange(ex.repsSpec);
         if (!top) continue;
         const instances = allLogs
-          .filter(([, l]) => l.exercises[ex.id]?.sets.some((s) => s.done))
+          .filter(([, l]) => setsForExercise(l, ex.id)?.some((s) => s.done))
           .slice(-2);
         if (instances.length < 2) continue;
         // M-05: require ALL prescribed sets to be done at top-of-range, not
@@ -247,7 +275,7 @@ export const weeklyReview = (dateInWeek: Date | string): WeeklyReview => {
         // sets at 12 reps; the design rule is "all sets at the top of the
         // range" so the off-by-one was a real bug.
         const allAtTop = instances.every(([, l]) => {
-          const sets = l.exercises[ex.id].sets.filter((s) => s.done);
+          const sets = (setsForExercise(l, ex.id) ?? []).filter((s) => s.done);
           return sets.length >= ex.sets && sets.every((s) => {
             const reps = parseInt(s.reps, 10);
             return !Number.isNaN(reps) && reps >= top;

@@ -31,11 +31,36 @@
 | 3 — Strength & Skill | 6–11 | Barbell squat/RDL, assistance → zero on pull-ups, dip loading, adv-tuck L-sit, low-box pistol. First strict pull-up attempt wk 9–10 IF hang ≥ 30 s pain-free |
 | 4 — Integration | 12–16 | Strict pull-up clusters, weighted dips, full pistols, one-leg→full L-sit. **Week 16 = deload + retest** |
 
-## Weekly split
-- **Mon — Lower + Core:** squat pattern (goblet → barbell), pistol track, single-leg hinge, hollow work
-- **Tue — Pull + Shoulder rehab:** pull-up progression, inverted rows, scap pulls (feet supported), band pull-aparts + external rotations (extra left-side set)
-- **Thu — Push + Core:** DB bench, dip track, push-up progressions, landmine press (pain-free only), anti-extension/rotation core
-- **Sat — Hinge + Skills + Conditioning:** KB swings, RDL, L-sit track, pistol practice, KB intervals, mobility
+## Weekly split — sessions A/B/C/D (rotation, not weekday-locked)
+From Phase 2 (Week 2 onward) the four sessions are labelled by **letter**, not weekday. Train them in **A → B → C → D** order; after D, cycle back to A. The app suggests the next session based on the most recent completed log, and you can manually pick any session on any date via the day-key override.
+
+- **A — Lower + Core:** squat pattern (goblet → barbell), pistol track, single-leg hinge, hollow work
+- **B — Pull + Shoulder rehab:** pull-up progression, inverted rows, scap pulls (feet supported), supported dead hang, band pull-aparts + external rotations (extra left-side set)
+- **C — Push + Core:** DB bench, dip track, push-up progressions, landmine press (pain-free only), close-grip floor press (the only triceps line — overhead extensions are **banned**), anti-extension/rotation core
+- **D — Hinge + Skills + Conditioning:** KB swings, RDL, L-sit track, pistol practice, KB intervals, mobility, optional dragon-flag finisher
+
+**Spacing rules** (the app warns when violated):
+- Max 2 consecutive training days.
+- No B (Pull) ↔ C (Push) on consecutive days — both load the shoulder; insert a rest day or run A/D between.
+- ≥ 4 sessions in the last 7 days = bonus volume, keep extras light.
+
+Internal day keys (`mon`/`tue`/`thu`/`sat`) are preserved in the data so historical logs from the calendar-driven era still render and count.
+
+## Week 2 calibration (Phase 2, set 2026-06-10 from assessment)
+Restated from the Week 1 assessment outcomes:
+- **Goblet squat** 16–20 kg (10 kg was far too light).
+- **Single-arm row** 16–20 kg.
+- **KB swing** 16 kg if available.
+- **DB bench** ~15–17.5 kg/hand where 10 reps = RIR 2.
+- **Reverse lunge** start 10 kg DBs.
+- **DB RDL** move toward barbell RDL 40–50 kg.
+- **Hollow rock** 3×12–15 replaces hollow hold (earned 3×45 s).
+- **Dead hang (feet supported)** 3×15–20 s — builds toward the ≥30 s hang gate before strict pull-ups.
+- **Scap pulls (supported)** **regressed** to 2×5 with maximum foot support — only at pain ≤ 2/10, otherwise sub band scap depressions.
+- **Dips** +1 rep per session while ≤ 2/10.
+- **Landmine press** add 2.5–5 kg (bar-only ×15 was pain-free week 1). Stop on any pain.
+- **Close-grip floor press** 3×10–12 — shoulder-safe triceps line. Replaces all overhead / behind-head extensions (pain 2→4/10 week 1).
+- **Dragon flag** (optional D finisher) 2×5 slow — pain-free only.
 
 ## Progression rules (double progression)
 Progress only when: all sets at top of rep range, clean technique, target RIR met, no concerning pain, recovery OK. One variable at a time: reps → sets → ROM → slower eccentric → less assistance → harder variation → load.
