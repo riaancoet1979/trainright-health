@@ -14,6 +14,7 @@ import type {
 } from '../types/training';
 import { PHASES, getPhaseForWeek, DEFAULT_DAY_TYPE_TARGETS } from '../data/program';
 import { getUserSettings, saveUserSettings } from './storage';
+import { markExported } from './migrations';
 
 export const TRAINING_KEY = 'health_training_v1';
 
@@ -673,10 +674,7 @@ export const exportAllData = (): string => {
     out[k] = raw ? JSON.parse(raw) : null;
   }
   // Stamp the last-export marker so the Settings backup-nudge banner clears.
-  // Imported lazily to avoid a circular dependency between training.ts and
-  // migrations.ts at module-init time.
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  import('./migrations').then((m) => m.markExported(exportedAt)).catch(() => { /* non-blocking */ });
+  markExported(exportedAt);
   return JSON.stringify(out, null, 2);
 };
 

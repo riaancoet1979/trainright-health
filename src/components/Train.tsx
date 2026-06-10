@@ -151,6 +151,12 @@ const Train = ({ selectedDate, onUpdate }: TrainProps) => {
           </div>
         </div>
 
+        {/* Recovery-focused coach card on the rest day — sleep / steps /
+            yesterday-protein insights still apply, and the rotation suggestion
+            tells the user what's queued up next. */}
+        <CoachDaily date={selectedDate} />
+        <NextSessionPreviewCard date={selectedDate} dayKey={suggestedNextDayKey} />
+
         {/* Want to train anyway? Let the user pick a workout to do today. */}
         <DayPickerCard
           date={selectedDate}
@@ -639,6 +645,48 @@ const BodyweightCard = ({ bw, date, onSaved }: BwProps) => {
         </p>
       )}
       <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">Weekly trend matters, not the daily number.</p>
+    </div>
+  );
+};
+
+// ─── Next-session preview (rest-day card) ─────────────────────────────────────
+//
+// Tells the user what the A->B->C->D rotation will pick next so a rest day
+// still feels intentional. Looks up the suggested day's exercises from the
+// resolved phase so the label tracks Phase 2/3/4 changes.
+
+interface NextSessionPreviewProps {
+  date: Date;
+  dayKey: DayKey;
+}
+
+const NextSessionPreviewCard = ({ date, dayKey }: NextSessionPreviewProps) => {
+  // Resolve the phase for the next session by looking 1 day ahead — guarantees
+  // the natural day-of-week matches what the rotation would pick anyway.
+  const td = getTrainingData();
+  if (!td.programStartDate) return null;
+  const s = new Date(td.programStartDate + 'T00:00:00');
+  const dow = (s.getDay() + 6) % 7;
+  s.setDate(s.getDate() - dow);
+  const ahead = new Date(dateKey(date) + 'T00:00:00');
+  ahead.setDate(ahead.getDate() + 1);
+  const diff = Math.floor((ahead.getTime() - s.getTime()) / 86400000);
+  if (diff < 0) return null;
+  const wk = Math.min(Math.floor(diff / 7) + 1, 16);
+  const phase = getPhaseForWeek(wk);
+  const day = phase.days.find((d) => d.key === dayKey);
+  if (!day) return null;
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow">
+      <h3 className="font-bold text-gray-900 dark:text-white mb-1 flex items-center gap-2">
+        <CalendarDays className="w-5 h-5" /> Next session
+      </h3>
+      <p className="text-sm text-gray-600 dark:text-gray-300">
+        Rotation queues up <strong>{day.label}</strong>. {day.goal}
+      </p>
+      <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+        Today: walk, sleep, protein ≥ 160 g. The session log is ready when you are.
+      </p>
     </div>
   );
 };

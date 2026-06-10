@@ -39,4 +39,18 @@ export default defineConfig({
       },
     }),
   ],
+  build: {
+    // Split heavy vendors so the main app shell stays small (<300 kB) and
+    // chart code is only loaded when the user opens the Stats tab.
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'react-vendor': ['react', 'react-dom'],
+          'chart-vendor': ['chart.js', 'react-chartjs-2'],
+          'date-vendor': ['date-fns'],
+          'icons': ['lucide-react'],
+        },
+      },
+    },
+  },
 })
