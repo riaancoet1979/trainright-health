@@ -161,9 +161,11 @@ export const hasCriticalIssues = (): boolean => {
 };
 
 /**
- * Log validation results to console
+ * Log validation results to console. Dev-only — silent in production builds
+ * so the deployed app does not leak debug output to end users.
  */
 export const logValidationResults = (): void => {
+  if (!import.meta.env.DEV) return;
   const result = validateDatabase();
 
   console.log('📊 Food Database Validation Results:');

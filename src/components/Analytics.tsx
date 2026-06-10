@@ -93,7 +93,8 @@ const Analytics = () => {
   const [weekOffset, setWeekOffset] = useState(0);
 
   // Lazy-load Bar chart component
-  const [BarComp, setBarComp] = useState<any>(null);
+  type BarComponent = typeof import('react-chartjs-2')['Bar'];
+  const [BarComp, setBarComp] = useState<BarComponent | null>(null);
   useEffect(() => {
     let mounted = true;
     import('react-chartjs-2')

@@ -15,9 +15,8 @@ class ErrorBoundary extends React.Component<React.PropsWithChildren<{}>, State> 
     return { hasError: true, error };
   }
 
-  componentDidCatch(_error: Error, _info: any) {
-    // TODO: send to telemetry if configured
-    // console.error('ErrorBoundary caught', error, info);
+  componentDidCatch(_error: Error, _info: React.ErrorInfo) {
+    // TODO: send to telemetry if configured.
   }
 
   render() {
