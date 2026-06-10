@@ -5,6 +5,14 @@
 export type DayKey = 'mon' | 'tue' | 'thu' | 'sat';
 export type Readiness = 'green' | 'yellow' | 'red';
 
+/**
+ * Rotation-model session labels used from Phase 2 onward. A=Lower+Core,
+ * B=Pull+Rehab, C=Push+Core, D=Hinge+Skills. The schedule rotates A->B->C->D
+ * regardless of weekday — `DayKey` is preserved purely as a stable storage
+ * key for legacy logs from the calendar-driven era.
+ */
+export type SessionLetter = 'A' | 'B' | 'C' | 'D';
+
 export type ExerciseCategory =
   | 'squat' | 'hinge' | 'lunge' | 'core' | 'row' | 'pullup'
   | 'bench' | 'dip' | 'press' | 'rehab' | 'skill' | 'mobility' | 'conditioning';

@@ -3,6 +3,8 @@ import {
   getWeekNum, getDayKeyForDate, getSessionForDate, adjustForReadiness,
   setProgramStartDate, importTrainRightBackup, getTrainingData,
   getTargetsForDate, TRAINING_KEY,
+  getNextRotationDayKey, getSpacingGuards, updateSessionLog,
+  DAY_KEY_TO_LETTER, LETTER_TO_DAY_KEY,
 } from '../utils/training';
 import { PHASES, getPhaseForWeek, DEFAULT_DAY_TYPE_TARGETS } from '../data/program';
 
@@ -125,6 +127,101 @@ describe('day-type nutrition targets', () => {
     expect(getTargetsForDate('2026-06-08')).toEqual(DEFAULT_DAY_TYPE_TARGETS.training);
     expect(getTargetsForDate('2026-06-10')).toEqual(DEFAULT_DAY_TYPE_TARGETS.rest); // Wed
     expect(getTargetsForDate('2026-06-14')).toEqual(DEFAULT_DAY_TYPE_TARGETS.rest); // Sun
+  });
+});
+
+describe('rotation model A/B/C/D', () => {
+  it('DAY_KEY_TO_LETTER and LETTER_TO_DAY_KEY round-trip', () => {
+    for (const k of ['mon', 'tue', 'thu', 'sat'] as const) {
+      expect(LETTER_TO_DAY_KEY[DAY_KEY_TO_LETTER[k]]).toBe(k);
+    }
+  });
+
+  it('defaults to A (mon) when no history exists', () => {
+    expect(getNextRotationDayKey('2026-06-15')).toBe('mon');
+  });
+
+  it('suggests B after a completed A, C after B, D after C, A after D (wrap)', () => {
+    setProgramStartDate('2026-06-08');
+    const complete = (iso: string, dayKey: 'mon' | 'tue' | 'thu' | 'sat') =>
+      updateSessionLog(iso, (l) => { l.dayKey = dayKey; l.completed = true; });
+
+    complete('2026-06-15', 'mon'); // A done
+    expect(getNextRotationDayKey('2026-06-16')).toBe('tue'); // -> B
+
+    complete('2026-06-16', 'tue'); // B done
+    expect(getNextRotationDayKey('2026-06-18')).toBe('thu'); // -> C
+
+    complete('2026-06-18', 'thu'); // C done
+    expect(getNextRotationDayKey('2026-06-20')).toBe('sat'); // -> D
+
+    complete('2026-06-20', 'sat'); // D done
+    expect(getNextRotationDayKey('2026-06-22')).toBe('mon'); // wraps to A
+  });
+
+  it('honours dayKeyOverride when deciding "what was last trained"', () => {
+    setProgramStartDate('2026-06-08');
+    // Sunday with override running A — the rotation should advance to B next.
+    updateSessionLog('2026-06-14', (l) => {
+      l.dayKey = 'mon';
+      l.dayKeyOverride = 'mon';
+      l.completed = true;
+    });
+    expect(getNextRotationDayKey('2026-06-15')).toBe('tue');
+  });
+
+  it('ignores incomplete logs when picking the next session', () => {
+    updateSessionLog('2026-06-15', (l) => { l.dayKey = 'mon'; l.completed = false; });
+    // Nothing completed -> default A.
+    expect(getNextRotationDayKey('2026-06-16')).toBe('mon');
+  });
+});
+
+describe('spacing guards', () => {
+  it('returns no guards when there is no recent history', () => {
+    expect(getSpacingGuards('2026-06-15', 'mon')).toEqual([]);
+  });
+
+  it('warns on the third consecutive training day', () => {
+    updateSessionLog('2026-06-13', (l) => { l.dayKey = 'sat'; l.completed = true; });
+    updateSessionLog('2026-06-14', (l) => { l.dayKey = 'mon'; l.dayKeyOverride = 'mon'; l.completed = true; });
+    const guards = getSpacingGuards('2026-06-15', 'tue');
+    expect(guards.some((g) => g.kind === 'consecutive_days')).toBe(true);
+  });
+
+  it('warns on B after C (Pull after Push) on adjacent days', () => {
+    updateSessionLog('2026-06-14', (l) => { l.dayKey = 'thu'; l.dayKeyOverride = 'thu'; l.completed = true; });
+    const guards = getSpacingGuards('2026-06-15', 'tue');
+    expect(guards.some((g) => g.kind === 'push_pull_back_to_back')).toBe(true);
+  });
+
+  it('warns on C after B (Push after Pull) on adjacent days', () => {
+    updateSessionLog('2026-06-14', (l) => { l.dayKey = 'tue'; l.dayKeyOverride = 'tue'; l.completed = true; });
+    const guards = getSpacingGuards('2026-06-15', 'thu');
+    expect(guards.some((g) => g.kind === 'push_pull_back_to_back')).toBe(true);
+  });
+
+  it('does not warn push/pull when planned session is A or D', () => {
+    updateSessionLog('2026-06-14', (l) => { l.dayKey = 'thu'; l.completed = true; });
+    const guards = getSpacingGuards('2026-06-15', 'mon');
+    expect(guards.some((g) => g.kind === 'push_pull_back_to_back')).toBe(false);
+  });
+
+  it('warns when 4+ sessions were completed in the previous 7 days', () => {
+    for (let i = 1; i <= 4; i++) {
+      const d = new Date('2026-06-15T00:00:00');
+      d.setDate(d.getDate() - i);
+      const iso = d.toISOString().slice(0, 10);
+      updateSessionLog(iso, (l) => { l.dayKey = 'mon'; l.completed = true; });
+    }
+    const guards = getSpacingGuards('2026-06-15', 'tue');
+    expect(guards.some((g) => g.kind === 'high_weekly_volume')).toBe(true);
+  });
+
+  it('legacy logs without dayKeyOverride still resolve in guards (back-compat)', () => {
+    updateSessionLog('2026-06-14', (l) => { l.dayKey = 'thu'; l.completed = true; });
+    const guards = getSpacingGuards('2026-06-15', 'tue');
+    expect(guards.some((g) => g.kind === 'push_pull_back_to_back')).toBe(true);
   });
 });
 

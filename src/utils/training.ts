@@ -10,7 +10,7 @@ import type { BodyStatEntry } from '../types';
 import type {
   TrainingData, SessionLog, DayKey, Readiness, ProgramDay,
   ProgramExercise, MacroTargets, DayTypeTargets, BodyMetric, LoggedSet,
-  RedFlagState,
+  RedFlagState, SessionLetter,
 } from '../types/training';
 import { PHASES, getPhaseForWeek, DEFAULT_DAY_TYPE_TARGETS } from '../data/program';
 import { getUserSettings, saveUserSettings } from './storage';
@@ -111,6 +111,122 @@ export const getSessionForDate = (
 
 export const isTrainingDay = (date: Date | string): boolean =>
   getSessionForDate(date) !== null;
+
+// ── Rotation model (A/B/C/D regardless of weekday) ──────────────────────────
+//
+// From Phase 2 onward the user rotates through 4 sessions in order. The
+// canonical DayKey storage stays the same so historical logs keep working —
+// these helpers translate between the two views and suggest the next session
+// based on what was *actually trained last*, ignoring the calendar weekday.
+
+export const DAY_KEY_TO_LETTER: Record<DayKey, SessionLetter> = {
+  mon: 'A',
+  tue: 'B',
+  thu: 'C',
+  sat: 'D',
+};
+
+export const LETTER_TO_DAY_KEY: Record<SessionLetter, DayKey> = {
+  A: 'mon',
+  B: 'tue',
+  C: 'thu',
+  D: 'sat',
+};
+
+const ROTATION_ORDER: SessionLetter[] = ['A', 'B', 'C', 'D'];
+
+/** The session letter actually trained on a log, honouring dayKeyOverride. */
+const loggedLetter = (log: SessionLog): SessionLetter =>
+  DAY_KEY_TO_LETTER[log.dayKeyOverride ?? log.dayKey];
+
+/**
+ * Suggest the next session to train in A->B->C->D rotation, based on the most
+ * recent COMPLETED log strictly before `beforeDate`. If there is no completed
+ * history, default to A (Lower + Core). After D, cycle back to A.
+ */
+export const getNextRotationDayKey = (beforeDate: Date | string): DayKey => {
+  const td = getTrainingData();
+  const before = dateKey(beforeDate);
+  const completed = Object.entries(td.logs)
+    .filter(([d, l]) => d < before && l.completed)
+    .sort((a, b) => b[0].localeCompare(a[0])); // newest first
+  if (completed.length === 0) return LETTER_TO_DAY_KEY.A;
+  const lastLetter = loggedLetter(completed[0][1]);
+  const idx = ROTATION_ORDER.indexOf(lastLetter);
+  const nextLetter = ROTATION_ORDER[(idx + 1) % ROTATION_ORDER.length];
+  return LETTER_TO_DAY_KEY[nextLetter];
+};
+
+export interface SpacingGuard {
+  kind: 'consecutive_days' | 'push_pull_back_to_back' | 'high_weekly_volume';
+  message: string;
+}
+
+const addDays = (iso: string, n: number): string => {
+  const d = new Date(iso + 'T00:00:00');
+  d.setDate(d.getDate() + n);
+  return format(d, 'yyyy-MM-dd');
+};
+
+/**
+ * Coaching warnings (not hard blocks) for the spacing of the planned session
+ * relative to recent history. Surfaces three patterns:
+ *  - consecutive_days: about to log a third consecutive training day
+ *  - push_pull_back_to_back: B (Pull) directly after C (Push) or vice versa
+ *  - high_weekly_volume: would be the 5th completed session in the last 7 days
+ */
+export const getSpacingGuards = (
+  date: Date | string,
+  plannedDayKey: DayKey,
+): SpacingGuard[] => {
+  const td = getTrainingData();
+  const today = dateKey(date);
+  const out: SpacingGuard[] = [];
+
+  const wasCompletedOn = (iso: string): SessionLog | undefined => {
+    const l = td.logs[iso];
+    return l && l.completed ? l : undefined;
+  };
+
+  // 1) Consecutive days: the two prior days were both completed sessions
+  const d1 = wasCompletedOn(addDays(today, -1));
+  const d2 = wasCompletedOn(addDays(today, -2));
+  if (d1 && d2) {
+    out.push({
+      kind: 'consecutive_days',
+      message: '3rd consecutive training day — consider resting today.',
+    });
+  }
+
+  // 2) Pull (B) and Push (C) back-to-back on adjacent calendar days
+  const plannedLetter = DAY_KEY_TO_LETTER[plannedDayKey];
+  if (d1 && (plannedLetter === 'B' || plannedLetter === 'C')) {
+    const prevLetter = loggedLetter(d1);
+    const conflict =
+      (plannedLetter === 'B' && prevLetter === 'C') ||
+      (plannedLetter === 'C' && prevLetter === 'B');
+    if (conflict) {
+      out.push({
+        kind: 'push_pull_back_to_back',
+        message: 'Pull and Push back-to-back stresses the shoulder — insert a rest day or run A/D between.',
+      });
+    }
+  }
+
+  // 3) High weekly volume: 4 completed sessions in the last 7 days already
+  let weekly = 0;
+  for (let i = 1; i <= 7; i++) {
+    if (wasCompletedOn(addDays(today, -i))) weekly++;
+  }
+  if (weekly >= 4) {
+    out.push({
+      kind: 'high_weekly_volume',
+      message: `${weekly} sessions in the last 7 days — extra training is bonus volume, keep it light.`,
+    });
+  }
+
+  return out;
+};
 
 // ── Red-flag enforcement (H-02) ──
 /**

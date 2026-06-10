@@ -1,12 +1,13 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { format } from 'date-fns';
-import { Dumbbell, CheckCircle2, Circle, AlertTriangle, Scale, Play, CalendarDays, RotateCcw } from 'lucide-react';
+import { Dumbbell, CheckCircle2, Circle, AlertTriangle, Scale, Play, CalendarDays, RotateCcw, X, Sparkles } from 'lucide-react';
 import type { Readiness, RedFlagState, DayKey } from '../types/training';
 import {
   getSessionForDate, getSessionLog, updateSessionLog, adjustForReadiness,
   applyPrerequisites, effectiveReadiness,
   getLastExerciseLog, setProgramStartDate, getTrainingData, addBodyMetric,
   latestBodyweight, getTargetsForDate, dateKey, getDayKeyForDate,
+  getNextRotationDayKey, getSpacingGuards, DAY_KEY_TO_LETTER,
 } from '../utils/training';
 import { WARMUP, TREADMILL_NOTE, PROGRAM_NAME, PHASES, getPhaseForWeek } from '../data/program';
 import { suggestReadiness, lastSyncLabel, isHealthDataStale } from '../utils/health';
@@ -60,6 +61,7 @@ const Train = ({ selectedDate, onUpdate }: TrainProps) => {
     return (
       <div className="space-y-4">
         <StalenessBanner />
+        <CoachNotesBanner />
         <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow">
         <h2 className="text-xl font-bold mb-2 text-gray-900 dark:text-white flex items-center gap-2">
           <Dumbbell className="w-6 h-6" /> {PROGRAM_NAME}
@@ -127,11 +129,15 @@ const Train = ({ selectedDate, onUpdate }: TrainProps) => {
   const targets = getTargetsForDate(selectedDate);
   const bw = latestBodyweight();
 
+  // Rotation suggestion: which session would A->B->C->D order pick next?
+  const suggestedNextDayKey = getNextRotationDayKey(selectedDate);
+
   // ── Rest day ──
   if (!session) {
     return (
       <div className="space-y-4">
         <StalenessBanner />
+        <CoachNotesBanner />
         <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow">
           <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-1">
             {format(selectedDate, 'EEEE d MMM')} — Rest day
@@ -150,6 +156,7 @@ const Train = ({ selectedDate, onUpdate }: TrainProps) => {
           date={selectedDate}
           currentKey={null}
           naturalKey={naturalDayKey}
+          suggestedKey={suggestedNextDayKey}
           onPick={setDayOverride}
           onReset={null}
           intro="Want to train today instead? Pick a workout — it logs against today's date."
@@ -159,6 +166,11 @@ const Train = ({ selectedDate, onUpdate }: TrainProps) => {
       </div>
     );
   }
+
+  // Spacing guards (warnings, not blocks) — surface back-to-back B/C, 3rd
+  // consecutive day, ≥4 sessions in last 7 days. Computed from the planned
+  // session (override-aware via session.day.key).
+  const spacingGuards = getSpacingGuards(selectedDate, session.day.key);
 
   // H-03: gate exercises by their prerequisite (e.g. strict pull-up needs band
   // pull-up at top of range × 2). gated[] preserves all original entries; any
@@ -206,6 +218,19 @@ const Train = ({ selectedDate, onUpdate }: TrainProps) => {
   return (
     <div className="space-y-4">
       <StalenessBanner />
+      <CoachNotesBanner />
+      {/* Spacing guards — coach-style warnings near the top so the user sees
+          them before working through readiness/symptoms. */}
+      {spacingGuards.length > 0 && (
+        <div className="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-xl p-3 text-sm text-amber-800 dark:text-amber-200">
+          <div className="font-semibold flex items-center gap-1 mb-1">
+            <AlertTriangle className="w-4 h-4" /> Spacing notes
+          </div>
+          <ul className="list-disc ml-5 space-y-0.5">
+            {spacingGuards.map((g) => <li key={g.kind}>{g.message}</li>)}
+          </ul>
+        </div>
+      )}
       {/* Session header */}
       <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow">
         <div className="flex justify-between items-start flex-wrap gap-2">
@@ -321,6 +346,7 @@ const Train = ({ selectedDate, onUpdate }: TrainProps) => {
         date={selectedDate}
         currentKey={session.day.key}
         naturalKey={naturalDayKey}
+        suggestedKey={suggestedNextDayKey}
         onPick={setDayOverride}
         onReset={isOverridden ? clearDayOverride : null}
         intro="Switch to a different day's workout for today:"
@@ -468,13 +494,15 @@ interface DayPickerProps {
   currentKey: DayKey | null;
   /** The date's natural day-of-week key (null = Wed/Fri/Sun rest day). */
   naturalKey: DayKey | null;
+  /** The day the A->B->C->D rotation would pick next (highlight in the picker). */
+  suggestedKey?: DayKey | null;
   onPick: (k: DayKey) => void;
   /** When non-null, render a "Reset to schedule" link. */
   onReset: (() => void) | null;
   intro: string;
 }
 
-const DayPickerCard = ({ date, currentKey, naturalKey, onPick, onReset, intro }: DayPickerProps) => {
+const DayPickerCard = ({ date, currentKey, naturalKey, suggestedKey, onPick, onReset, intro }: DayPickerProps) => {
   // Resolve which phase's day labels to show. If the date is before program
   // start (no week), fall back to Phase 1 labels so the picker still works.
   const weekNum = getTrainingData().programStartDate
@@ -522,6 +550,7 @@ const DayPickerCard = ({ date, currentKey, naturalKey, onPick, onReset, intro }:
         {days.map(d => {
           const isCurrent = d.key === currentKey;
           const isNatural = d.key === naturalKey;
+          const isSuggested = suggestedKey ? d.key === suggestedKey : false;
           return (
             <button
               key={d.key}
@@ -529,14 +558,21 @@ const DayPickerCard = ({ date, currentKey, naturalKey, onPick, onReset, intro }:
               className={`px-3 py-2 rounded-lg text-left text-xs border transition-colors ${
                 isCurrent
                   ? 'bg-primary-600 text-white border-primary-600'
-                  : 'bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-200 border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600'
+                  : isSuggested
+                    ? 'bg-emerald-50 dark:bg-emerald-900/30 text-gray-800 dark:text-gray-100 border-emerald-300 dark:border-emerald-700 hover:bg-emerald-100 dark:hover:bg-emerald-900/50'
+                    : 'bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-200 border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-600'
               }`}
             >
-              <div className="font-bold uppercase tracking-wide text-[11px] flex items-center gap-1">
-                {d.key}
+              <div className="font-bold uppercase tracking-wide text-[11px] flex items-center gap-1 flex-wrap">
+                <span>{DAY_KEY_TO_LETTER[d.key]}</span>
                 {isNatural && (
                   <span className={`text-[9px] font-medium px-1 rounded ${isCurrent ? 'bg-white/20' : 'bg-gray-200 dark:bg-gray-600'}`}>
                     today
+                  </span>
+                )}
+                {isSuggested && !isCurrent && (
+                  <span className="text-[9px] font-medium px-1 rounded bg-emerald-200 dark:bg-emerald-800/60 text-emerald-900 dark:text-emerald-100">
+                    next
                   </span>
                 )}
               </div>
@@ -603,6 +639,49 @@ const BodyweightCard = ({ bw, date, onSaved }: BwProps) => {
         </p>
       )}
       <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">Weekly trend matters, not the daily number.</p>
+    </div>
+  );
+};
+
+// ─── Coach notes banner (Week 2) ──────────────────────────────────────────────
+//
+// Dismissible explainer for the rotation model + safety guards. Dismissal is
+// stored in localStorage so it doesn't reappear after a reload. The key is
+// versioned (v2) so future programming-change rollouts can re-show the banner
+// by bumping the suffix.
+const COACH_NOTES_KEY = 'health_coach_notes_v2_dismissed';
+
+const CoachNotesBanner = () => {
+  const [dismissed, setDismissed] = useState(false);
+  useEffect(() => {
+    setDismissed(localStorage.getItem(COACH_NOTES_KEY) === '1');
+  }, []);
+  if (dismissed) return null;
+  const dismiss = () => {
+    localStorage.setItem(COACH_NOTES_KEY, '1');
+    setDismissed(true);
+  };
+  return (
+    <div className="bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-800 rounded-xl p-3 text-sm text-emerald-900 dark:text-emerald-100">
+      <div className="flex items-start gap-2">
+        <Sparkles className="w-4 h-4 mt-0.5 flex-shrink-0" aria-hidden />
+        <div className="flex-1">
+          <div className="font-semibold mb-1">Coach notes — Week 2</div>
+          <ul className="list-disc ml-4 space-y-0.5 text-[13px]">
+            <li>Sessions rotate <strong>A → B → C → D</strong>, not by weekday. The picker highlights what's next.</li>
+            <li>Max 2 consecutive training days. No Pull (B) ↔ Push (C) back-to-back — the app warns when you're about to.</li>
+            <li>Protein ≥ 160 g daily, including rest days.</li>
+            <li>No overhead barbell work. Stop any exercise on shoulder pain &gt; 2/10.</li>
+          </ul>
+        </div>
+        <button
+          onClick={dismiss}
+          aria-label="Dismiss coach notes"
+          className="text-emerald-700 dark:text-emerald-300 hover:text-emerald-900 dark:hover:text-emerald-100 flex-shrink-0"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      </div>
     </div>
   );
 };
