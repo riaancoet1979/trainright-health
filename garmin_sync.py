@@ -49,23 +49,40 @@ PUBLIC_ONLY = "--public-only" in sys.argv
 
 
 def login() -> Garmin:
-    # Try saved tokens first
+    # Token store: garminconnect >= 0.3 saves/loads garmin_tokens.json in the
+    # directory passed to login(); GARMINTOKENS pins it for all code paths.
+    os.environ.setdefault("GARMINTOKENS", TOKEN_DIR)
+
+    # 1) Try saved tokens in our project dir
     try:
         g = Garmin()
         g.login(TOKEN_DIR)
         return g
     except Exception:
         pass
-    # Interactive login
+
+    # 2) A previous (crashed) login may have auto-saved tokens to the
+    #    library default ~/.garminconnect — adopt them into TOKEN_DIR.
+    default_store = os.path.expanduser("~/.garminconnect")
+    default_file = os.path.join(default_store, "garmin_tokens.json")
+    if os.path.isfile(default_file):
+        try:
+            os.makedirs(TOKEN_DIR, exist_ok=True)
+            import shutil
+            shutil.copy2(default_file, os.path.join(TOKEN_DIR, "garmin_tokens.json"))
+            g = Garmin()
+            g.login(TOKEN_DIR)
+            print(f"Adopted existing tokens from {default_store} -> {TOKEN_DIR}")
+            return g
+        except Exception:
+            pass
+
+    # 3) Interactive login (new API: prompt_mfa callback, login(path) saves tokens)
     import getpass
     email = input("Garmin Connect email: ").strip()
     password = getpass.getpass("Garmin Connect password: ")
-    g = Garmin(email=email, password=password, return_on_mfa=True)
-    result1, result2 = g.login()
-    if result1 == "needs_mfa":
-        code = input("MFA code from your email/phone: ").strip()
-        g.resume_login(result2, code)
-    g.garth.dump(TOKEN_DIR)
+    g = Garmin(email, password, prompt_mfa=lambda: input("MFA code from your email/phone: ").strip())
+    g.login(TOKEN_DIR)
     print(f"Login OK — tokens saved to {TOKEN_DIR}")
     return g
 
