@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { Settings as SettingsIcon, Save, Moon, Sun, Plus, Edit2, Trash2, Download, Upload, X, AlertTriangle } from 'lucide-react';
-import { getUserSettings, saveUserSettings, getCustomFoods, addCustomFood, updateCustomFood, deleteCustomFood, exportCustomFoods, importCustomFoods, isFoodNameDuplicate, exportFitnessData, importFitnessData, resetAllFitnessData } from '../utils/storage';
+import { getUserSettings, saveUserSettings, getCustomFoods, addCustomFood, updateCustomFood, deleteCustomFood, exportCustomFoods, importCustomFoods, isFoodNameDuplicate, exportFitnessData, importFitnessData, resetAllFitnessData, exportAppBackup, importAppBackup } from '../utils/storage';
 import type { FoodItem } from '../types';
 import { useTheme } from '../contexts/useTheme';
 import { useConfirm, useToast } from './ui';
@@ -22,6 +22,7 @@ const Settings = ({ onSettingsSaved }: SettingsProps) => {
   const [searchFilter, setSearchFilter] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const fitnessImportRef = useRef<HTMLInputElement>(null);
+  const appBackupImportRef = useRef<HTMLInputElement>(null);
 
   // Food form state
   const [foodForm, setFoodForm] = useState({
@@ -290,6 +291,62 @@ const Settings = ({ onSettingsSaved }: SettingsProps) => {
     }
   };
 
+  const handleExportAppBackup = () => {
+    const json = exportAppBackup();
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `trainright-health-backup-${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportAppBackup = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const content = e.target?.result as string;
+
+      const mode = await confirmChoice<'merge' | 'replace' | null>({
+        title: 'Restore full app backup',
+        message:
+          'This restores nutrition history, custom foods, targets, body stats and training logs.\n\n' +
+          'Merge: keep current data and overlay the backup.\n' +
+          'Replace: clear current app data first, then restore the backup.',
+        choices: [
+          { label: 'Merge', value: 'merge', variant: 'primary' },
+          { label: 'Replace', value: 'replace', variant: 'danger' },
+          { label: 'Cancel', value: null, variant: 'secondary' },
+        ],
+      });
+      if (mode === null) return;
+
+      const result = importAppBackup(content, mode);
+      if (result.success) {
+        const nextSettings = getUserSettings();
+        setSettings(nextSettings);
+        setDailyCaloriesInput(String(nextSettings.targets.dailyCalories));
+        setDailyProteinInput(String(nextSettings.targets.dailyProtein));
+        setCustomFoods(getCustomFoods());
+        try { window.dispatchEvent(new Event('settings-updated')); } catch (e) {}
+        showToast(`Restored ${result.count} app data section${result.count !== 1 ? 's' : ''}. Reloading app…`, { kind: 'success' });
+        window.setTimeout(() => window.location.reload(), 800);
+      } else {
+        showToast(`Restore failed: ${result.error}`, { kind: 'error' });
+      }
+    };
+    reader.readAsText(file);
+
+    if (appBackupImportRef.current) {
+      appBackupImportRef.current.value = '';
+    }
+  };
+
   const filteredCustomFoods = customFoods.filter(
     (food) =>
       food.name.toLowerCase().includes(searchFilter.toLowerCase()) ||
@@ -318,6 +375,41 @@ const Settings = ({ onSettingsSaved }: SettingsProps) => {
           >
             {theme === 'light' ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
           </button>
+        </div>
+      </div>
+
+      {/* App Backup */}
+      <div className="mb-6 pb-6 border-b border-gray-200 dark:border-gray-700">
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <h4 className="font-semibold">Full App Backup</h4>
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              Back up or restore nutrition history, custom foods, targets, body stats and training logs.
+            </p>
+          </div>
+        </div>
+        <div className="flex gap-2 items-center flex-wrap">
+          <button
+            onClick={handleExportAppBackup}
+            className="btn-secondary px-3 flex items-center gap-2"
+          >
+            <Download className="w-4 h-4" />
+            Export Full Backup
+          </button>
+          <button
+            onClick={() => appBackupImportRef.current?.click()}
+            className="btn-secondary px-3 flex items-center gap-2"
+          >
+            <Upload className="w-4 h-4" />
+            Restore Full Backup
+          </button>
+          <input
+            ref={appBackupImportRef}
+            type="file"
+            accept=".json,application/json"
+            className="hidden"
+            onChange={handleImportAppBackup}
+          />
         </div>
       </div>
 

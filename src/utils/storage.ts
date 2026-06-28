@@ -8,6 +8,143 @@ const STORAGE_KEYS = {
   CUSTOM_FOODS: 'nutrition_tracker_custom_foods',
   ACHIEVEMENTS: 'nutrition_tracker_achievements',
   BODY_STATS: 'trainright_body_stats',
+  TRAINING: 'health_training_v1',
+} as const;
+
+const APP_BACKUP_KEYS = [
+  STORAGE_KEYS.DAILY_ENTRIES,
+  STORAGE_KEYS.USER_SETTINGS,
+  STORAGE_KEYS.CUSTOM_FOODS,
+  STORAGE_KEYS.ACHIEVEMENTS,
+  STORAGE_KEYS.BODY_STATS,
+  STORAGE_KEYS.TRAINING,
+] as const;
+
+type AppBackupKey = typeof APP_BACKUP_KEYS[number];
+type AppBackupImportMode = 'merge' | 'replace';
+
+type AppBackupImportResult =
+  | { success: true; count: number; keys: AppBackupKey[] }
+  | { success: false; count: 0; keys: AppBackupKey[]; error: string };
+
+const isPlainObject = (value: unknown): value is Record<string, unknown> => (
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+);
+
+const mergePlainObjects = (existing: unknown, incoming: unknown): unknown => {
+  if (!isPlainObject(existing) || !isPlainObject(incoming)) return incoming;
+
+  const merged: Record<string, unknown> = { ...existing };
+  for (const [key, value] of Object.entries(incoming)) {
+    merged[key] = isPlainObject(value) && isPlainObject(merged[key])
+      ? mergePlainObjects(merged[key], value)
+      : value;
+  }
+  return merged;
+};
+
+const mergeArraysByStableIdentity = (existing: unknown, incoming: unknown): unknown => {
+  if (!Array.isArray(existing) || !Array.isArray(incoming)) return incoming;
+
+  const merged = [...existing];
+  const identityFor = (item: unknown): string | undefined => {
+    if (!isPlainObject(item)) return undefined;
+    const id = item.id;
+    if (typeof id === 'string' && id) return `id:${id}`;
+    const sourceFingerprint = item.sourceFingerprint;
+    if (typeof sourceFingerprint === 'string' && sourceFingerprint) return `source:${sourceFingerprint}`;
+    const date = item.date;
+    if (typeof date === 'string' && date) return `date:${date}`;
+    return undefined;
+  };
+
+  const index = new Map<string, number>();
+  merged.forEach((item, itemIndex) => {
+    const identity = identityFor(item);
+    if (identity) index.set(identity, itemIndex);
+  });
+
+  incoming.forEach((item) => {
+    const identity = identityFor(item);
+    if (identity && index.has(identity)) {
+      merged[index.get(identity)!] = item;
+    } else {
+      merged.push(item);
+      if (identity) index.set(identity, merged.length - 1);
+    }
+  });
+
+  return merged;
+};
+
+const mergeBackupValue = (key: AppBackupKey, importedValue: unknown): unknown => {
+  const stored = localStorage.getItem(key);
+  if (!stored) return importedValue;
+
+  try {
+    const existingValue = JSON.parse(stored);
+    if (Array.isArray(importedValue)) return mergeArraysByStableIdentity(existingValue, importedValue);
+    if (isPlainObject(importedValue)) return mergePlainObjects(existingValue, importedValue);
+  } catch {
+    // If existing local data is malformed, imported backup is safer than keeping it.
+  }
+
+  return importedValue;
+};
+
+export const exportAppBackup = (): string => {
+  const backup: Record<string, unknown> = {
+    exportedAt: new Date().toISOString(),
+    app: 'trainright-health',
+  };
+
+  APP_BACKUP_KEYS.forEach((key) => {
+    const stored = localStorage.getItem(key);
+    if (!stored) return;
+    try {
+      backup[key] = JSON.parse(stored);
+    } catch {
+      backup[key] = stored;
+    }
+  });
+
+  return JSON.stringify(backup, null, 2);
+};
+
+export const importAppBackup = (
+  jsonString: string,
+  mode: AppBackupImportMode = 'merge',
+): AppBackupImportResult => {
+  try {
+    const imported = JSON.parse(jsonString);
+    if (!isPlainObject(imported)) {
+      return { success: false, count: 0, keys: [], error: 'Invalid backup format. Expected a TrainRight app backup object.' };
+    }
+
+    const keys = APP_BACKUP_KEYS.filter((key) => key in imported);
+    if (keys.length === 0) {
+      return { success: false, count: 0, keys: [], error: 'No recognised TrainRight app data found in this backup.' };
+    }
+
+    if (mode === 'replace') {
+      APP_BACKUP_KEYS.forEach((key) => localStorage.removeItem(key));
+    }
+
+    keys.forEach((key) => {
+      const value = imported[key];
+      if (value === null || value === undefined) {
+        if (mode === 'replace') localStorage.removeItem(key);
+        return;
+      }
+
+      const nextValue = mode === 'merge' ? mergeBackupValue(key, value) : value;
+      localStorage.setItem(key, JSON.stringify(nextValue));
+    });
+
+    return { success: true, count: keys.length, keys };
+  } catch {
+    return { success: false, count: 0, keys: [], error: 'Failed to parse backup file. Make sure it is a valid JSON file.' };
+  }
 };
 
 // User Settings
