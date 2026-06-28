@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Search, Plus, X, Minus, Apple, Scale, CalendarDays } from 'lucide-react';
 import { format, isToday } from 'date-fns';
 import type { FoodItem, FoodEntry as FoodEntryType } from '../types';
-import { calculatePortionNutrients, addFoodEntry, getAllFoods } from '../utils/storage';
+import { calculatePortionNutrients, addFoodEntry, addManualMealEntry, getAllFoods } from '../utils/storage';
 
 interface FoodEntryProps {
   selectedDate: Date;
@@ -16,6 +16,11 @@ const FoodEntry = ({ selectedDate, onEntryAdded }: FoodEntryProps) => {
   const [mealType, setMealType] = useState<'breakfast' | 'lunch' | 'dinner' | 'snack'>('breakfast');
   const [showResults, setShowResults] = useState(false);
   const [inputMode, setInputMode] = useState<'weight' | 'piece'>('weight');
+  const [entryMode, setEntryMode] = useState<'food' | 'mealTotals'>('food');
+  const [manualCalories, setManualCalories] = useState('');
+  const [manualProtein, setManualProtein] = useState('');
+  const [manualCarbs, setManualCarbs] = useState('');
+  const [manualFats, setManualFats] = useState('');
   const [pieceCount, setPieceCount] = useState(1);
 
   const allFoods = getAllFoods();
@@ -94,6 +99,34 @@ const FoodEntry = ({ selectedDate, onEntryAdded }: FoodEntryProps) => {
     onEntryAdded();
   };
 
+  const manualMacroValues = {
+    calories: parseFloat(manualCalories) || 0,
+    protein: parseFloat(manualProtein) || 0,
+    carbs: parseFloat(manualCarbs) || 0,
+    fats: parseFloat(manualFats) || 0,
+  };
+
+  const canAddManualMeal =
+    manualMacroValues.calories > 0 ||
+    manualMacroValues.protein > 0 ||
+    manualMacroValues.carbs > 0 ||
+    manualMacroValues.fats > 0;
+
+  const handleAddManualMeal = () => {
+    if (!canAddManualMeal) return;
+
+    addManualMealEntry(selectedDate, {
+      mealType,
+      ...manualMacroValues,
+    });
+
+    setManualCalories('');
+    setManualProtein('');
+    setManualCarbs('');
+    setManualFats('');
+    onEntryAdded();
+  };
+
   const nutrients = calculateNutrients();
 
   const loggingToday = isToday(selectedDate);
@@ -110,7 +143,38 @@ const FoodEntry = ({ selectedDate, onEntryAdded }: FoodEntryProps) => {
         </div>
       )}
 
-      {/* Food Search */}
+      {/* Entry Mode */}
+      <div className="mb-4">
+        <div className="flex gap-2 p-1 bg-gray-100 dark:bg-gray-800 rounded-lg">
+          <button
+            onClick={() => setEntryMode('food')}
+            className={`flex-1 py-2 px-4 rounded-lg font-medium transition-colors ${
+              entryMode === 'food'
+                ? 'bg-white dark:bg-gray-700 shadow-sm'
+                : 'hover:bg-gray-200 dark:hover:bg-gray-700'
+            }`}
+          >
+            Search food
+          </button>
+          <button
+            onClick={() => setEntryMode('mealTotals')}
+            className={`flex-1 py-2 px-4 rounded-lg font-medium transition-colors ${
+              entryMode === 'mealTotals'
+                ? 'bg-white dark:bg-gray-700 shadow-sm'
+                : 'hover:bg-gray-200 dark:hover:bg-gray-700'
+            }`}
+          >
+            Meal totals
+          </button>
+        </div>
+        <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+          Use meal totals when you already know the full macros for breakfast, lunch, dinner or snack.
+        </p>
+      </div>
+
+      {entryMode === 'food' && (
+        <>
+          {/* Food Search */}
       <div className="relative mb-4">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
@@ -278,6 +342,67 @@ const FoodEntry = ({ selectedDate, onEntryAdded }: FoodEntryProps) => {
           </div>
         )}
       </div>
+        </>
+      )}
+
+      {entryMode === 'mealTotals' && (
+        <div className="mb-4 p-4 bg-gray-50 dark:bg-gray-900 rounded-lg">
+          <h4 className="font-semibold mb-3">Enter total macros for this meal</h4>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium mb-1">Calories</label>
+              <input
+                type="number"
+                value={manualCalories}
+                onChange={(e) => setManualCalories(e.target.value)}
+                placeholder="650"
+                className="input-field"
+                min="0"
+                step="1"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Protein (g)</label>
+              <input
+                type="number"
+                value={manualProtein}
+                onChange={(e) => setManualProtein(e.target.value)}
+                placeholder="45"
+                className="input-field"
+                min="0"
+                step="0.1"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Carbs (g)</label>
+              <input
+                type="number"
+                value={manualCarbs}
+                onChange={(e) => setManualCarbs(e.target.value)}
+                placeholder="70"
+                className="input-field"
+                min="0"
+                step="0.1"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Fat (g)</label>
+              <input
+                type="number"
+                value={manualFats}
+                onChange={(e) => setManualFats(e.target.value)}
+                placeholder="18"
+                className="input-field"
+                min="0"
+                step="0.1"
+              />
+            </div>
+          </div>
+          <div className="mt-3 text-sm text-gray-600 dark:text-gray-400">
+            This logs one entry named “{mealType.charAt(0).toUpperCase() + mealType.slice(1)} totals” instead of five separate foods.
+          </div>
+        </div>
+      )}
 
       {/* Meal Type */}
       <div className="mb-4">
@@ -300,7 +425,7 @@ const FoodEntry = ({ selectedDate, onEntryAdded }: FoodEntryProps) => {
       </div>
 
       {/* Nutrition Preview */}
-      {selectedFood && nutrients && (
+      {entryMode === 'food' && selectedFood && nutrients && (
         <div className="mb-4 p-4 bg-gray-50 dark:bg-gray-900 rounded-lg">
           <h4 className="font-semibold mb-2">
             Nutrition for{' '}
@@ -330,14 +455,25 @@ const FoodEntry = ({ selectedDate, onEntryAdded }: FoodEntryProps) => {
       )}
 
       {/* Add Button */}
-      <button
-        onClick={handleAddFood}
-        disabled={!selectedFood || !portion}
-        className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-      >
-        <Plus className="w-5 h-5" />
-        Add Food
-      </button>
+      {entryMode === 'food' ? (
+        <button
+          onClick={handleAddFood}
+          disabled={!selectedFood || !portion}
+          className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <Plus className="w-5 h-5" />
+          Add Food
+        </button>
+      ) : (
+        <button
+          onClick={handleAddManualMeal}
+          disabled={!canAddManualMeal}
+          className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <Plus className="w-5 h-5" />
+          Add {mealType.charAt(0).toUpperCase() + mealType.slice(1)} Totals
+        </button>
+      )}
     </div>
   );
 };

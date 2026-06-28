@@ -245,7 +245,9 @@ const DailySummary = ({ selectedDate, dailyEntry, onUpdate }: DailySummaryProps)
                     <div className="flex-1">
                       <div className="font-medium">{entry.foodName}</div>
                       <div className="text-sm text-gray-600 dark:text-gray-400">
-                        {entry.servingType === 'piece' && entry.pieceCount ? (
+                        {entry.isManualMacroEntry || entry.servingType === 'manual' ? (
+                          <>Manual meal totals</>
+                        ) : entry.servingType === 'piece' && entry.pieceCount ? (
                           <>
                             {entry.pieceCount} piece{entry.pieceCount > 1 ? 's' : ''} ({entry.portion}g)
                           </>

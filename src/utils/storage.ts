@@ -201,6 +201,35 @@ export const addFoodEntry = (date: Date | string, foodEntry: FoodEntry): void =>
   saveDailyEntry(dailyEntry);
 };
 
+export const addManualMealEntry = (
+  date: Date | string,
+  macros: {
+    mealType: FoodEntry['mealType'];
+    calories: number;
+    protein: number;
+    carbs: number;
+    fats: number;
+  }
+): void => {
+  const safeMealType = macros.mealType;
+  const entry: FoodEntry = {
+    id: `${Date.now()}-${Math.random()}`,
+    foodId: `manual-${safeMealType}-macros`,
+    foodName: `${safeMealType.charAt(0).toUpperCase()}${safeMealType.slice(1)} totals`,
+    portion: 0,
+    calories: Math.max(0, Math.round(macros.calories || 0)),
+    protein: Math.max(0, Math.round((macros.protein || 0) * 10) / 10),
+    carbs: Math.max(0, Math.round((macros.carbs || 0) * 10) / 10),
+    fats: Math.max(0, Math.round((macros.fats || 0) * 10) / 10),
+    mealType: safeMealType,
+    timestamp: new Date().toISOString(),
+    servingType: 'manual',
+    isManualMacroEntry: true,
+  };
+
+  addFoodEntry(date, entry);
+};
+
 export const deleteFoodEntry = (date: Date | string, entryId: string): void => {
   const dateStr = typeof date === 'string' ? date : format(date, 'yyyy-MM-dd');
   const dailyEntry = getDailyEntry(dateStr);

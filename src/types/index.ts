@@ -24,7 +24,8 @@ export interface FoodEntry {
   mealType: 'breakfast' | 'lunch' | 'dinner' | 'snack';
   timestamp: string;
   pieceCount?: number;
-  servingType?: 'weight' | 'piece';
+  servingType?: 'weight' | 'piece' | 'manual';
+  isManualMacroEntry?: boolean;
 }
 
 export interface Exercise {
