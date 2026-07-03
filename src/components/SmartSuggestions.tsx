@@ -87,15 +87,6 @@ const SmartSuggestions = ({
     </div>
   );
 
-  if (mode === 'plan') {
-    return (
-      <div className="card p-6">
-        {modeToggle}
-        <MealPlanner selectedDate={selectedDate} remaining={remaining} onAdded={onUpdate} />
-      </div>
-    );
-  }
-
   // Get IDs of foods already eaten today
   const eatenFoodIds = useMemo(() => {
     return dailyEntry.foodEntries.map((e) => e.foodId);
@@ -112,6 +103,18 @@ const SmartSuggestions = ({
     () => getCategorySuggestions(deficit, eatenFoodIds),
     [deficit, eatenFoodIds],
   );
+
+  // Plan-mode branch. MUST come after every hook above so the hook count is
+  // stable across suggest⇄plan toggles (Rules of Hooks — an early return here
+  // that skips the useMemos above blanks the screen).
+  if (mode === 'plan') {
+    return (
+      <div className="card p-6">
+        {modeToggle}
+        <MealPlanner selectedDate={selectedDate} remaining={remaining} onAdded={onUpdate} />
+      </div>
+    );
+  }
 
   // If no deficit, don't show suggestions
   if (deficit.calories === 0 && deficit.protein === 0 && deficit.carbs === 0 && deficit.fats === 0) {
