@@ -76,6 +76,16 @@ export interface UserTargets {
   dailyFats: number;
 }
 
+/** How the daily macro budget is distributed across the four meals (percentages
+ *  that should sum to ~100). Used by the meal planner to decide how much of the
+ *  remaining budget each meal should carry. */
+export interface MealSplit {
+  breakfast: number;
+  lunch: number;
+  dinner: number;
+  snack: number;
+}
+
 export interface UserSettings {
   targets: UserTargets;
   theme: 'light' | 'dark';
@@ -85,6 +95,11 @@ export interface UserSettings {
     weekend: boolean;
   };
   restTimerSeconds?: number;
+  /** Meal-split percentages for the "plan my remaining meals" calculator. */
+  mealSplit?: MealSplit;
+  /** Food IDs (database or custom) the user keeps as "always in the house"
+   *  staples. Pre-loaded as candidates in the meal planner. */
+  staples?: string[];
 }
 
 export interface DayStatus {

@@ -1,10 +1,12 @@
 import { useState, useRef } from 'react';
 import { Download, Upload, RotateCcw, Dumbbell, AlertTriangle } from 'lucide-react';
 import type { DayTypeTargets } from '../types/training';
+import type { MealSplit } from '../types';
 import {
   getDayTypeTargets, saveDayTypeTargets, getTrainingData,
   setProgramStartDate, importTrainRightBackup, exportAllData, importAllData,
 } from '../utils/training';
+import { getMealSplit, saveMealSplit } from '../utils/storage';
 import { mergeGarminData } from '../utils/health';
 import { DEFAULT_DAY_TYPE_TARGETS, LEAN_GAIN_TARGETS } from '../data/program';
 import { daysSinceLastExport, BACKUP_NUDGE_DAYS, shouldNudgeBackup } from '../utils/migrations';
@@ -13,6 +15,7 @@ interface Props { onSaved: () => void }
 
 const ProgramSettings = ({ onSaved }: Props) => {
   const [targets, setTargets] = useState<DayTypeTargets>(getDayTypeTargets());
+  const [mealSplit, setMealSplit] = useState<MealSplit>(getMealSplit());
   const [msg, setMsg] = useState('');
   const data = getTrainingData();
   const [startDate, setStartDate] = useState(data.programStartDate ?? '');
@@ -30,10 +33,14 @@ const ProgramSettings = ({ onSaved }: Props) => {
 
   const save = () => {
     saveDayTypeTargets(targets);
+    saveMealSplit(mealSplit);
     if (startDate) setProgramStartDate(startDate);
     setMsg('Saved.');
     onSaved();
   };
+
+  const mealSplitTotal =
+    mealSplit.breakfast + mealSplit.lunch + mealSplit.dinner + mealSplit.snack;
 
   const applyPreset = (p: DayTypeTargets, name: string) => {
     setTargets(p);
@@ -119,6 +126,35 @@ const ProgramSettings = ({ onSaved }: Props) => {
       <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">
         Switch to Lean-gain around week 9 if body fat is ~15–16% and training is progressing.
       </p>
+
+      <hr className="my-4 border-gray-200 dark:border-gray-700" />
+
+      <h4 className="font-semibold text-gray-900 dark:text-white mb-2 text-sm">Meal split</h4>
+      <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+        How the daily macro budget is spread across meals. Used by the "Plan remaining meals" planner.
+      </p>
+      <div className="grid grid-cols-4 gap-2 text-xs text-gray-500 dark:text-gray-400 mb-1">
+        <span>Breakfast %</span><span>Lunch %</span><span>Dinner %</span><span>Snack %</span>
+      </div>
+      <div className="grid grid-cols-4 gap-2">
+        {(['breakfast', 'lunch', 'dinner', 'snack'] as const).map((meal) => (
+          <input
+            key={meal}
+            type="number"
+            min={0}
+            value={mealSplit[meal]}
+            onChange={(e) =>
+              setMealSplit((s) => ({ ...s, [meal]: Number(e.target.value) || 0 }))
+            }
+            className="border rounded px-2 py-1 text-sm dark:bg-gray-700 dark:text-white dark:border-gray-600"
+            aria-label={`${meal} percent`}
+          />
+        ))}
+      </div>
+      <p className={`text-xs mt-1 ${mealSplitTotal === 100 ? 'text-gray-400 dark:text-gray-500' : 'text-amber-600 dark:text-amber-400'}`}>
+        Total: {mealSplitTotal}%{mealSplitTotal === 100 ? '' : ' — aim for 100%. Shares are normalised across the meals you plan.'}
+      </p>
+      <button onClick={save} className="bg-primary-600 text-white px-4 py-2 rounded-lg text-sm font-semibold mt-3">Save meal split</button>
 
       <hr className="my-4 border-gray-200 dark:border-gray-700" />
 

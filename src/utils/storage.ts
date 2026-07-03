@@ -1,4 +1,4 @@
-import type { DailyEntry, UserSettings, FoodEntry, Exercise, FoodItem, BodyStatEntry } from '../types';
+import type { DailyEntry, UserSettings, FoodEntry, Exercise, FoodItem, BodyStatEntry, MealSplit } from '../types';
 import { format } from 'date-fns';
 import { foodDatabase } from '../data/foodDatabase';
 
@@ -172,6 +172,79 @@ export const getUserSettings = (): UserSettings => {
 
 export const saveUserSettings = (settings: UserSettings): void => {
   localStorage.setItem(STORAGE_KEYS.USER_SETTINGS, JSON.stringify(settings));
+};
+
+// ── Meal split (for the "plan my remaining meals" calculator) ──────────────
+// Riaan's habits: liquid breakfast + liquid lunch shakes, one main meal at
+// 17:00–18:00, plus a snack — so dinner carries the biggest share by default.
+export const DEFAULT_MEAL_SPLIT: MealSplit = {
+  breakfast: 25,
+  lunch: 25,
+  dinner: 35,
+  snack: 15,
+};
+
+export const getMealSplit = (): MealSplit => {
+  const s = getUserSettings();
+  return s.mealSplit ?? DEFAULT_MEAL_SPLIT;
+};
+
+export const saveMealSplit = (split: MealSplit): void => {
+  const s = getUserSettings();
+  s.mealSplit = split;
+  saveUserSettings(s);
+};
+
+// ── Staples ("always in the house" foods) ──────────────────────────────────
+// Locked default staple list curated with Riaan (2026-07-03). Food IDs must
+// match src/data/foodDatabase.ts. getStaples() falls back to this until the
+// user customises their own list.
+export const DEFAULT_STAPLES: string[] = [
+  // Proteins
+  'chicken-breast', 'chicken-thigh', 'chicken-thigh-skin', 'chicken-drumstick',
+  'chicken-wings', 'beef-mince', 'beef-steak', 'beef-ribeye', 'beef-rump',
+  'beef-tbone', 'minute-steak', 'boerewors', 'pork-chop',
+  // Dairy & eggs
+  'egg-whole', 'milk-full-cream', 'cottage-cheese', 'cottage-cheese-fatfree',
+  'gouda', 'feta', 'yoghurt-lowfat-plain', 'yoghurt-fatfree-plain', 'parmesan',
+  'cream-cheese', 'butter',
+  // Carbs
+  'basmati-rice-cooked', 'potato', 'sweet-potato', 'rye-bread', 'oats',
+  'tasty-wheat-dry', 'pasta-cooked', 'pap', 'weet-bix', 'sweetcorn',
+  'maize-meal-dry', 'tortilla-wrap', 'provita',
+  // Veg & fruit
+  'spinach', 'broccoli', 'cauliflower', 'brussels-sprouts', 'cabbage',
+  'tomato', 'cucumber', 'berries-mixed', 'strawberries', 'blueberries',
+  'orange', 'naartjie', 'orange-juice-fresh',
+  // Fats
+  'canola-oil', 'canola-olive-blend', 'olive-oil', 'beef-tallow', 'peanuts',
+  'almonds', 'peanut-butter-natural',
+  // Snacks & treats
+  'cadbury-dairy-milk', 'kitkat', 'biscoff-spread', 'biscoff-biscuits',
+  'cocoa-powder', 'rice-krispies', 'whispers', 'diddle-daddle',
+  'jungle-muesli-berries', 'oreos',
+];
+
+export const getStaples = (): string[] => {
+  const s = getUserSettings();
+  return s.staples ?? DEFAULT_STAPLES;
+};
+
+export const isStaple = (foodId: string): boolean => getStaples().includes(foodId);
+
+export const saveStaples = (ids: string[]): void => {
+  const s = getUserSettings();
+  // De-dupe while preserving order.
+  s.staples = Array.from(new Set(ids));
+  saveUserSettings(s);
+};
+
+/** Toggle a food's staple membership. Returns the new membership state. */
+export const toggleStaple = (foodId: string): boolean => {
+  const current = getStaples();
+  const has = current.includes(foodId);
+  saveStaples(has ? current.filter((id) => id !== foodId) : [...current, foodId]);
+  return !has;
 };
 
 // Daily Entries

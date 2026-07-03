@@ -228,7 +228,13 @@ const DailySummary = ({ selectedDate, dailyEntry, onUpdate }: DailySummaryProps)
       </div>
 
       {/* Smart Suggestions */}
-      <SmartSuggestions dailyEntry={dailyEntry} onQuickAdd={handleQuickAddFood} />
+      <SmartSuggestions
+        dailyEntry={dailyEntry}
+        onQuickAdd={handleQuickAddFood}
+        selectedDate={selectedDate}
+        targets={targets}
+        onUpdate={onUpdate}
+      />
 
       {/* Food Entries by Meal */}
       {Object.entries(mealGroups).map(

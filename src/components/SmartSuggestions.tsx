@@ -1,27 +1,100 @@
-import { useMemo } from 'react';
-import { Lightbulb, Plus } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { Lightbulb, Plus, Calculator } from 'lucide-react';
 import { getSuggestions, getCategorySuggestions } from '../utils/suggestions';
 import type { DailyEntry, FoodItem } from '../types';
+import type { MacroTargets } from '../types/training';
 import type { FoodSuggestion, NutrientDeficit } from '../utils/suggestions';
-import { getUserSettings } from '../utils/storage';
+import { remainingMacros, type Macros } from '../utils/mealPlanner';
+import MealPlanner from './MealPlanner';
 
 interface SmartSuggestionsProps {
   dailyEntry: DailyEntry;
   onQuickAdd: (food: FoodItem, portion: number) => void;
+  /** Day being viewed — where planned portions get logged. */
+  selectedDate: Date;
+  /** Day-type macro targets for this date (training vs rest). */
+  targets: MacroTargets;
+  /** Called after a planned portion is logged, so the parent can refresh. */
+  onUpdate: () => void;
 }
 
-const SmartSuggestions = ({ dailyEntry, onQuickAdd }: SmartSuggestionsProps) => {
-  const userSettings = getUserSettings();
+const SmartSuggestions = ({
+  dailyEntry,
+  onQuickAdd,
+  selectedDate,
+  targets,
+  onUpdate,
+}: SmartSuggestionsProps) => {
+  const [mode, setMode] = useState<'suggest' | 'plan'>('suggest');
 
-  // Calculate current deficit
+  // Calculate current deficit against the day-type targets.
   const deficit = useMemo((): NutrientDeficit => {
     return {
-      calories: Math.max(0, userSettings.targets.dailyCalories - dailyEntry.totalCalories),
-      protein: Math.max(0, userSettings.targets.dailyProtein - dailyEntry.totalProtein),
-      carbs: Math.max(0, userSettings.targets.dailyCarbs - dailyEntry.totalCarbs),
-      fats: Math.max(0, userSettings.targets.dailyFats - dailyEntry.totalFats),
+      calories: Math.max(0, targets.dailyCalories - dailyEntry.totalCalories),
+      protein: Math.max(0, targets.dailyProtein - dailyEntry.totalProtein),
+      carbs: Math.max(0, targets.dailyCarbs - dailyEntry.totalCarbs),
+      fats: Math.max(0, targets.dailyFats - dailyEntry.totalFats),
     };
-  }, [dailyEntry, userSettings]);
+  }, [dailyEntry, targets]);
+
+  // Remaining macros for the planner = day-type target − consumed, floored at 0.
+  // e.g. protein target 180 with 100 logged → planner works to 80, not 180.
+  const remaining: Macros = useMemo(
+    () =>
+      remainingMacros(
+        {
+          calories: targets.dailyCalories,
+          protein: targets.dailyProtein,
+          carbs: targets.dailyCarbs,
+          fats: targets.dailyFats,
+        },
+        {
+          calories: dailyEntry.totalCalories,
+          protein: dailyEntry.totalProtein,
+          carbs: dailyEntry.totalCarbs,
+          fats: dailyEntry.totalFats,
+        },
+      ),
+    [dailyEntry, targets],
+  );
+
+  const modeToggle = (
+    <div className="flex gap-2 mb-4" role="tablist" aria-label="Suggestion mode">
+      <button
+        role="tab"
+        aria-selected={mode === 'suggest'}
+        onClick={() => setMode('suggest')}
+        className={`px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-1.5 transition-colors ${
+          mode === 'suggest'
+            ? 'bg-primary-600 text-white'
+            : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
+        }`}
+      >
+        <Lightbulb className="w-4 h-4" /> Suggestions
+      </button>
+      <button
+        role="tab"
+        aria-selected={mode === 'plan'}
+        onClick={() => setMode('plan')}
+        className={`px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-1.5 transition-colors ${
+          mode === 'plan'
+            ? 'bg-primary-600 text-white'
+            : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
+        }`}
+      >
+        <Calculator className="w-4 h-4" /> Plan remaining meals
+      </button>
+    </div>
+  );
+
+  if (mode === 'plan') {
+    return (
+      <div className="card p-6">
+        {modeToggle}
+        <MealPlanner selectedDate={selectedDate} remaining={remaining} onAdded={onUpdate} />
+      </div>
+    );
+  }
 
   // Get IDs of foods already eaten today
   const eatenFoodIds = useMemo(() => {
@@ -44,6 +117,7 @@ const SmartSuggestions = ({ dailyEntry, onQuickAdd }: SmartSuggestionsProps) => 
   if (deficit.calories === 0 && deficit.protein === 0 && deficit.carbs === 0 && deficit.fats === 0) {
     return (
       <div className="card p-6 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800">
+        {modeToggle}
         <div className="flex items-center gap-2 mb-2">
           <span className="text-2xl">🎉</span>
           <h3 className="font-semibold text-green-800 dark:text-green-200">Goals Met!</h3>
@@ -59,6 +133,7 @@ const SmartSuggestions = ({ dailyEntry, onQuickAdd }: SmartSuggestionsProps) => 
     <div className="space-y-4">
       {/* Deficit Summary */}
       <div className="card p-6">
+        {modeToggle}
         <div className="flex items-start gap-3">
           <Lightbulb className="w-6 h-6 text-amber-500 flex-shrink-0 mt-0.5" />
           <div className="flex-1">
