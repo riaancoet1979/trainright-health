@@ -41,7 +41,8 @@ export const handleBootstrap = async (request: Request, env: Env): Promise<Respo
   if (typeof env.BOOTSTRAP_CODE !== 'string' || env.BOOTSTRAP_CODE.length < 16) {
     return error(
       request, env, 503, 'not_configured',
-      'BOOTSTRAP_CODE is not set. Run: npx wrangler secret put BOOTSTRAP_CODE',
+      'BOOTSTRAP_CODE is missing or too short (min 16 chars). '
+      + 'Set it with: npx wrangler secret put BOOTSTRAP_CODE',
     );
   }
 
