@@ -8,7 +8,7 @@ ALLOWED_ORIGINS = "https://riaancoet1979.github.io,http://localhost:5173"
 [[d1_databases]]
 binding = "DB"
 database_name = "trainright"
-# Filled in from `npx wrangler d1 create trainright`. Local tests use Miniflare's
-# own D1 and ignore this value; deploys require it to be real.
-database_id = "PENDING_WRANGLER_D1_CREATE"
+# From `npx wrangler d1 create trainright` (region WEUR). Not a secret — it is an
+# identifier, not a credential. Local tests use Miniflare's own D1 and ignore it.
+database_id = "4fb83e9e-ebca-4530-8e4f-cb75ed67b94f"
 migrations_dir = "migrations"

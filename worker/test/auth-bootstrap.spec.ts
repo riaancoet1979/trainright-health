@@ -1,5 +1,7 @@
 import { SELF, env } from 'cloudflare:test';
 import { describe, it, expect } from 'vitest';
+import { handleBootstrap } from '../src/auth';
+import type { Env } from '../src/env';
 
 const bootstrap = (body: unknown) =>
   SELF.fetch('https://api.test/v1/auth/bootstrap', {
@@ -53,6 +55,32 @@ describe('POST /v1/auth/bootstrap', () => {
     const a = await (await bootstrap({ code: 'test-bootstrap-code', label: 'A' })).json<{ token: string }>();
     const b = await (await bootstrap({ code: 'test-bootstrap-code', label: 'B' })).json<{ token: string }>();
     expect(a.token).not.toBe(b.token);
+  });
+
+  it('fails closed when BOOTSTRAP_CODE is unset or too weak', async () => {
+    const request = () => new Request('https://api.test/v1/auth/bootstrap', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: 'undefined', label: 'Attacker' }),
+    });
+
+    const countDevices = async () => (
+      await env.DB.prepare('SELECT COUNT(*) AS n FROM device').first<{ n: number }>()
+    )?.n;
+
+    const before = await countDevices();
+
+    // An unset secret would be encoded as the literal string "undefined",
+    // so guessing that string must not yield a token.
+    for (const bad of [undefined, '', 'undefined', 'short']) {
+      const res = await handleBootstrap(
+        request(),
+        { ...env, BOOTSTRAP_CODE: bad } as unknown as Env,
+      );
+      expect(res.status, `BOOTSTRAP_CODE=${String(bad)}`).toBe(503);
+    }
+
+    expect(await countDevices()).toBe(before);
   });
 
   it('records the requested scope, defaulting to app', async () => {

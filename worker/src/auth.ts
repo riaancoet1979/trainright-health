@@ -36,6 +36,15 @@ export const handleBootstrap = async (request: Request, env: Env): Promise<Respo
     return error(request, env, 400, 'bad_json', 'Request body must be JSON.');
   }
 
+  // Fail closed. An unset secret would otherwise be encoded as the literal
+  // string "undefined", handing a token to anyone who guesses it.
+  if (typeof env.BOOTSTRAP_CODE !== 'string' || env.BOOTSTRAP_CODE.length < 16) {
+    return error(
+      request, env, 503, 'not_configured',
+      'BOOTSTRAP_CODE is not set. Run: npx wrangler secret put BOOTSTRAP_CODE',
+    );
+  }
+
   const label = typeof body.label === 'string' ? body.label.trim() : '';
   if (!label) return error(request, env, 400, 'missing_label', 'A device label is required.');
 
