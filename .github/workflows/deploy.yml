@@ -22,12 +22,51 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+      - name: Reject tracked private Garmin material
+        run: |
+          if git ls-files | grep -Ei '(^|/)(gh-sync\.json|garmin_health\.json)$|(^|/)\.garmin_tokens/|garmin.*token'; then
+            echo "::error::Private Garmin data or tokens are tracked"
+            exit 1
+          fi
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
       - run: npm ci --include=dev
       - run: npm run build
+      - name: Reject private health data from Pages artifact
+        run: |
+          if find dist -type f \( -iname 'gh-sync.json' -o -iname 'garmin_health.json' -o -iname '*garmin*token*' \) -print -quit | grep -q .; then
+            echo "::error::Private Garmin material found in the Pages artifact"
+            exit 1
+          fi
+      - name: Enforce explicit Pages artifact allowlist
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          allowed_top = {
+              "apple-touch-icon.png", "index.html", "manifest.webmanifest",
+              "pwa-192x192.png", "pwa-512x512.png", "pwa-maskable-512.png",
+              "registerSW.js", "sw.js", "vite.svg",
+          }
+          allowed_asset_suffixes = {".js", ".css", ".png", ".svg", ".webp", ".woff", ".woff2"}
+          rejected = []
+          for path in Path("dist").rglob("*"):
+              if not path.is_file():
+                  continue
+              rel = path.relative_to("dist")
+              allowed = (
+                  (len(rel.parts) == 1 and (rel.name in allowed_top or re.fullmatch(r"workbox-[a-f0-9]+\.js", rel.name)))
+                  or (len(rel.parts) == 2 and rel.parts[0] == "assets" and rel.suffix.lower() in allowed_asset_suffixes)
+              )
+              if not allowed:
+                  rejected.append(rel.as_posix())
+          if rejected:
+              print("::error::Unexpected files in Pages artifact: " + ", ".join(rejected))
+              raise SystemExit(1)
+          PY
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

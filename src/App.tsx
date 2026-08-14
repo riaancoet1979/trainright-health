@@ -1,5 +1,5 @@
 import { useState, useEffect, lazy, Suspense } from 'react';
-import { Calendar as CalendarIcon, PlusCircle, BarChart3, Settings as SettingsIcon, Dumbbell, Activity, Scale } from 'lucide-react';
+import { Calendar as CalendarIcon, PlusCircle, BarChart3, Settings as SettingsIcon, Dumbbell, Activity, Scale, HeartPulse } from 'lucide-react';
 import Calendar from './components/Calendar';
 import DailySummary from './components/DailySummary';
 import FoodEntry from './components/FoodEntry';
@@ -15,6 +15,7 @@ import { CoachWeekly } from './components/Coach';
 // is a 900-line entry/history component the user only opens on weigh-in days.
 const Analytics = lazy(() => import('./components/Analytics'));
 const BodyStats = lazy(() => import('./components/BodyStats'));
+const HealthDashboard = lazy(() => import('./components/HealthDashboard'));
 
 const LazyFallback = () => (
   <div className="text-center text-sm text-gray-500 dark:text-gray-400 py-10">Loading…</div>
@@ -32,7 +33,7 @@ import { startAutoSync } from './sync/engine';
 // boots are a no-op.
 runMigrations();
 
-type View = 'calendar' | 'train' | 'add' | 'analytics' | 'fitness' | 'body' | 'settings';
+type View = 'calendar' | 'train' | 'add' | 'analytics' | 'fitness' | 'health' | 'body' | 'settings';
 
 interface NavItem {
   key: View;
@@ -49,6 +50,7 @@ const NAV_ITEMS: NavItem[] = [
   { key: 'add',       label: 'Add food or exercise', short: 'Add', icon: PlusCircle },
   { key: 'analytics', label: 'Stats',     short: 'Stats',    icon: BarChart3 },
   { key: 'fitness',   label: 'Fitness',   short: 'Fitness',  icon: Activity },
+  { key: 'health',    label: 'Health',    short: 'Health',   icon: HeartPulse },
   { key: 'body',      label: 'Body',      short: 'Body',     icon: Scale },
   { key: 'settings',  label: 'Settings',  short: 'Settings', icon: SettingsIcon },
 ];
@@ -128,6 +130,9 @@ function App() {
           </Suspense>
         )}
         {view === 'fitness' && <Fitness selectedDate={selectedDate} onUpdate={refreshDailyEntry} />}
+        {view === 'health' && (
+          <Suspense fallback={<LazyFallback />}><HealthDashboard /></Suspense>
+        )}
         {view === 'body' && (
           <Suspense fallback={<LazyFallback />}>
             <BodyStats />
@@ -145,7 +150,7 @@ function App() {
       {/* Bottom Navigation */}
       <nav aria-label="Main navigation" className="fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 safe-area-inset-bottom">
         <div className="max-w-4xl mx-auto px-4">
-          <div className="grid grid-cols-7 gap-0">
+          <div className="grid grid-cols-8 gap-0">
             {NAV_ITEMS.map((item) => {
               const Icon = item.icon;
               const isCurrent = view === item.key;

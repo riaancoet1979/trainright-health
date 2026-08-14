@@ -1,7 +1,7 @@
 import type { DailyEntry, UserSettings, FoodEntry, Exercise, FoodItem, BodyStatEntry, MealSplit } from '../types';
 import { format } from 'date-fns';
 import { foodDatabase } from '../data/foodDatabase';
-import { writeStore, removeStore } from '../sync/writeStore';
+import { writeStore, removeStore, captureStoreDiff } from '../sync/writeStore';
 
 /**
  * Persist a tracked store and queue the change for sync.
@@ -31,6 +31,7 @@ const STORAGE_KEYS = {
   ACHIEVEMENTS: 'nutrition_tracker_achievements',
   BODY_STATS: 'trainright_body_stats',
   TRAINING: 'health_training_v1',
+  HEALTH_METRICS: 'health_metrics_v1',
 } as const;
 
 const APP_BACKUP_KEYS = [
@@ -40,6 +41,7 @@ const APP_BACKUP_KEYS = [
   STORAGE_KEYS.ACHIEVEMENTS,
   STORAGE_KEYS.BODY_STATS,
   STORAGE_KEYS.TRAINING,
+  STORAGE_KEYS.HEALTH_METRICS,
 ] as const;
 
 type AppBackupKey = typeof APP_BACKUP_KEYS[number];
@@ -341,6 +343,15 @@ export const getYesterdaySteps = (date: Date | string): number => {
   yesterday.setDate(dateObj.getDate() - 1);
   const yEntry = getDailyEntry(format(yesterday, 'yyyy-MM-dd'));
   return yEntry.fitness?.steps?.steps || 0;
+};
+
+export const captureAllDailyEntryChanges = (
+  before: Record<string, DailyEntry>,
+  after: Record<string, DailyEntry>,
+): void => {
+  void captureStoreDiff(STORAGE_KEYS.DAILY_ENTRIES, before, after).catch((error) => {
+    console.error('[sync] failed to queue Garmin daily-entry changes', error);
+  });
 };
 
 export const saveDailyEntry = (entry: DailyEntry): void => {

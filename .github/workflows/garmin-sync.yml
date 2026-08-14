@@ -1,42 +1,28 @@
-name: Garmin sync → Pages
+name: Garmin sync validation (private)
 
-# Daily cron pulls the last 14 days of steps/sleep/RHR/HRV from Garmin Connect
-# and redeploys the GitHub Pages site with the JSON bundled in. The live PWA
-# fetches gh-sync.json on every open and absorbs the new data.
-#
-# Setup (one-time, by hand — see HANDOFF section in Phase 1 instructions):
-#   1. Locally: tar + base64 the .garmin_tokens/ dir contents.
-#   2. Add the base64 blob as repo secret GARMIN_TOKENS_B64.
-#   3. Optionally run this workflow once via "Run workflow" to verify.
-#
-# The cron auto-refreshes the token in-memory each run; the persisted token in
-# the secret is the refresh token (typically valid ~1 year). When it expires,
-# this job fails and the Train tab's StalenessBanner will surface it within 48h.
+# SECURITY: Garmin health JSON must never be uploaded to GitHub Pages or an
+# Actions artifact. TrainRight's protected Windows sync owns the live Garmin
+# payload until the authenticated private sync backend supports health records.
+# This manual workflow only verifies that the importer can build a payload; the
+# runner is destroyed after completion and no payload is uploaded.
 
 on:
-  schedule:
-    # 04:30 UTC daily = 06:30 SAST. Cron in CI is fuzzy by ±10 min; that's fine.
-    - cron: '30 4 * * *'
   workflow_dispatch:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
-
-# Same group as deploy.yml so they serialize instead of fighting for Pages.
-concurrency:
-  group: pages
-  cancel-in-progress: false
 
 jobs:
-  sync-build-deploy:
+  validate-private-sync:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+      - name: Reject tracked private Garmin material
+        run: |
+          if git ls-files | grep -Ei '(^|/)(gh-sync\.json|garmin_health\.json)$|(^|/)\.garmin_tokens/|garmin.*token'; then
+            echo "::error::Private Garmin data or tokens are tracked"
+            exit 1
+          fi
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -46,39 +32,27 @@ jobs:
       - name: Install garminconnect
         run: pip install --quiet garminconnect
 
-      - name: Restore Garmin tokens from secret
+      - name: Restore Garmin tokens from encrypted secret
         env:
           GARMIN_TOKENS_B64: ${{ secrets.GARMIN_TOKENS_B64 }}
         run: |
-          if [ -z "$GARMIN_TOKENS_B64" ]; then
-            echo "::error::GARMIN_TOKENS_B64 secret not set. See garmin-sync.yml header for one-time setup."
-            exit 1
-          fi
+          test -n "$GARMIN_TOKENS_B64" || { echo "::error::GARMIN_TOKENS_B64 is not set"; exit 1; }
           mkdir -p .garmin_tokens
           echo "$GARMIN_TOKENS_B64" | base64 -d | tar -xz -C .garmin_tokens
-          echo "Restored token files:"
-          ls -la .garmin_tokens
 
-      - name: Run Garmin sync (writes public/gh-sync.json)
-        run: python garmin_sync.py --public-only
-
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-
-      - run: npm ci --include=dev
-      - run: npm run build
-
-      - name: Verify gh-sync.json is in the build output
+      - name: Validate private Garmin importer
+        env:
+          GARMIN_TOKEN_DIR: .garmin_tokens
         run: |
-          test -s dist/gh-sync.json || { echo "::error::dist/gh-sync.json missing or empty"; exit 1; }
-          echo "Bundled $(wc -c < dist/gh-sync.json) bytes of Garmin data."
+          python garmin_sync.py --public-only
+          python - <<'PY'
+          import json
+          payload = json.load(open('public/gh-sync.json', encoding='utf-8'))
+          assert payload.get('source') == 'garmin_connect'
+          assert len(payload.get('days', {})) == 32
+          print('Private Garmin importer validated for 32 days; payload will not be uploaded.')
+          PY
 
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: dist
-      - id: deployment
-        uses: actions/deploy-pages@v4
+      - name: Remove generated health payload
+        if: always()
+        run: rm -f public/gh-sync.json

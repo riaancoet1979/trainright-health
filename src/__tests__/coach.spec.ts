@@ -32,7 +32,7 @@ describe('dailyInsights', () => {
 
   it('praises protein on target and flags short sleep', () => {
     logFood('2026-06-15', 2000, 158);
-    mergeGarminData({ days: { '2026-06-16': { sleepHours: 5.5 } } });
+    mergeGarminData({ source: 'garmin_connect', days: { '2026-06-16': { sleepHours: 5.5 } } });
     const ins = dailyInsights('2026-06-16');
     expect(ins.some((i) => i.level === 'good' && i.text.includes('Protein on point'))).toBe(true);
     expect(ins.some((i) => i.level === 'action' && i.text.includes('Sleep 5.5h'))).toBe(true);

@@ -78,6 +78,16 @@ export const writeStore = async (key: string, value: unknown): Promise<void> => 
   }
 };
 
+export const captureStoreDiff = async (key: string, beforeValue: unknown, afterValue: unknown): Promise<void> => {
+  if (!TRACKED.has(key) || suppressCapture) return;
+  const before = shredStore(key, beforeValue);
+  const after = shredStore(key, afterValue);
+  const updatedAt = new Date().toISOString();
+  for (const mutation of diff(before, after, updatedAt)) {
+    await enqueue(mutation);
+  }
+};
+
 /** Removing a whole store tombstones every record that was in it. */
 export const removeStore = async (key: string): Promise<void> => {
   if (!TRACKED.has(key)) {
