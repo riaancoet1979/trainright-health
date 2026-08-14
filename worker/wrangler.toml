@@ -1,0 +1,14 @@
+name = "trainright-api"
+main = "src/index.ts"
+compatibility_date = "2026-08-01"
+
+[vars]
+ALLOWED_ORIGINS = "https://riaancoet1979.github.io,http://localhost:5173"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "trainright"
+# Filled in from `npx wrangler d1 create trainright`. Local tests use Miniflare's
+# own D1 and ignore this value; deploys require it to be real.
+database_id = "PENDING_WRANGLER_D1_CREATE"
+migrations_dir = "migrations"

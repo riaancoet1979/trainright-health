@@ -139,7 +139,7 @@ migrations_dir = "migrations"
     "lib": ["ES2022"],
     "module": "ESNext",
     "moduleResolution": "Bundler",
-    "types": ["@cloudflare/workers-types", "@cloudflare/vitest-pool-workers"],
+    "types": ["@cloudflare/workers-types", "@cloudflare/vitest-pool-workers/types"],
     "strict": true,
     "noEmit": true,
     "skipLibCheck": true,
@@ -213,14 +213,18 @@ export const error = (
 
 - [ ] **Step 8: Write the failing test**
 
-Create `worker/test/env.d.ts`:
+Create `worker/test/env.d.ts`. Note: `ProvidedEnv` was removed in vitest-pool-workers 0.21 —
+the test `env` is now typed by declaration-merging into the global `Cloudflare.Env`:
 
 ```ts
-import type { Env } from '../src/env';
+import type { Env as AppEnv } from '../src/env';
+import type { D1Migration } from '@cloudflare/vitest-pool-workers';
 
-declare module 'cloudflare:test' {
-  interface ProvidedEnv extends Env {
-    TEST_MIGRATIONS: D1Migration[];
+declare global {
+  namespace Cloudflare {
+    interface Env extends AppEnv {
+      TEST_MIGRATIONS: D1Migration[];
+    }
   }
 }
 ```
@@ -286,37 +290,45 @@ deterministic regardless of your Pages origin.
 
 `migrations/` does not exist yet, so guard the read — Task 2 creates it.
 
+**Version note.** vitest-pool-workers 0.21 removed the `@cloudflare/vitest-pool-workers/config`
+subpath and `defineWorkersConfig`. It is now a Vite *plugin*: what used to be
+`test.poolOptions.workers` is the argument to `cloudflareTest()`. If you are on an older 0.8.x
+version you will need the old form instead — the package ships a codemod at
+`dist/codemods/vitest-v3-to-v4.mjs` that documents the exact mapping.
+
 ```ts
 import path from 'node:path';
-import { defineWorkersConfig, readD1Migrations } from '@cloudflare/vitest-pool-workers/config';
+import { cloudflareTest, readD1Migrations, type D1Migration } from '@cloudflare/vitest-pool-workers';
+import { defineConfig } from 'vitest/config';
 
-export default defineWorkersConfig(async () => {
-  const migrationsDir = path.join(process.cwd(), 'migrations');
-  let migrations: unknown[] = [];
-  try {
-    migrations = await readD1Migrations(migrationsDir);
-  } catch {
-    migrations = [];
-  }
+export default defineConfig({
+  plugins: [
+    cloudflareTest(async () => {
+      const migrationsDir = path.join(process.cwd(), 'migrations');
+      let migrations: D1Migration[] = [];
+      try {
+        migrations = await readD1Migrations(migrationsDir);
+      } catch {
+        // Task 2 creates migrations/. Until then, run against an empty schema.
+        migrations = [];
+      }
 
-  return {
-    test: {
-      setupFiles: ['./test/apply-migrations.ts'],
-      poolOptions: {
-        workers: {
-          singleWorker: true,
-          isolatedStorage: true,
-          wrangler: { configPath: './wrangler.toml' },
-          miniflare: {
-            bindings: {
-              TEST_MIGRATIONS: migrations,
-              BOOTSTRAP_CODE: 'test-bootstrap-code',
-            },
+      return {
+        singleWorker: true,
+        isolatedStorage: true,
+        wrangler: { configPath: './wrangler.toml' },
+        miniflare: {
+          bindings: {
+            TEST_MIGRATIONS: migrations,
+            BOOTSTRAP_CODE: 'test-bootstrap-code',
           },
         },
-      },
-    },
-  };
+      };
+    }),
+  ],
+  test: {
+    setupFiles: ['./test/apply-migrations.ts'],
+  },
 });
 ```
 
