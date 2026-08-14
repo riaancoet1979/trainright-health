@@ -6,6 +6,7 @@ import {
   handleListDevices,
   handleRevokeDevice,
 } from './auth';
+import { handleSyncPush } from './sync';
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -29,6 +30,8 @@ export default {
       handler = () => handleListDevices(request, env);
     } else if (request.method === 'DELETE' && revokeMatch) {
       handler = () => handleRevokeDevice(request, env, revokeMatch[1]);
+    } else if (route === 'POST /v1/sync/push') {
+      handler = () => handleSyncPush(request, env);
     }
 
     if (!handler) return error(request, env, 404, 'not_found', `No route for ${route}`);

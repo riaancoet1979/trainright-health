@@ -1873,24 +1873,37 @@ const applyMutation = async (db: D1Database, mutation: Mutation): Promise<PushRe
   const deletedAt = mutation.deleted ? mutation.updatedAt : null;
 
   const payloadFields = Object.keys(mutation.fields ?? {});
-  const columns = ['id', 'revision', 'updated_at', 'deleted_at', ...payloadFields.map(toSnake)];
-  const values = [
-    mutation.id,
-    revision,
-    mutation.updatedAt,
-    deletedAt,
-    ...payloadFields.map((field) => toColumnValue(spec, field, mutation.fields![field])),
-  ];
+  const payloadValues = payloadFields.map(
+    (field) => toColumnValue(spec, field, mutation.fields![field]),
+  );
 
-  // Envelope columns are always overwritten; payload columns only when present,
-  // so a delete carrying no fields does not blank the record.
-  const updates = ['revision = excluded.revision', 'updated_at = excluded.updated_at', 'deleted_at = excluded.deleted_at']
-    .concat(payloadFields.map((field) => `${toSnake(field)} = excluded.${toSnake(field)}`));
+  if (existing) {
+    // UPDATE, not INSERT ... ON CONFLICT. SQLite checks NOT NULL on the proposed
+    // insert row *before* conflict resolution, so an upsert would reject a
+    // delete — which legitimately carries no fields — against a table with any
+    // NOT NULL payload column. Updating touches only the columns we were given,
+    // so a field-less delete tombstones the row without blanking it.
+    const assignments = [
+      'revision = ?',
+      'updated_at = ?',
+      'deleted_at = ?',
+      ...payloadFields.map((field) => `${toSnake(field)} = ?`),
+    ];
+    await db.prepare(
+      `UPDATE ${spec.table} SET ${assignments.join(', ')} WHERE id = ?`,
+    ).bind(revision, mutation.updatedAt, deletedAt, ...payloadValues, mutation.id).run();
+
+    return { id: mutation.id, status: 'applied' };
+  }
+
+  // First write for this id. A partial first write *should* fail loudly on a
+  // NOT NULL column rather than create a half-record.
+  const columns = ['id', 'revision', 'updated_at', 'deleted_at', ...payloadFields.map(toSnake)];
+  const values = [mutation.id, revision, mutation.updatedAt, deletedAt, ...payloadValues];
 
   await db.prepare(
     `INSERT INTO ${spec.table} (${columns.join(', ')})
-     VALUES (${columns.map(() => '?').join(', ')})
-     ON CONFLICT(id) DO UPDATE SET ${updates.join(', ')}`,
+     VALUES (${columns.map(() => '?').join(', ')})`,
   ).bind(...values).run();
 
   return { id: mutation.id, status: 'applied' };
@@ -1926,7 +1939,12 @@ export const handleSyncPush = async (request: Request, env: Env): Promise<Respon
 };
 ```
 
-Note the deliberate `INSERT ... ON CONFLICT` shape: a NOT NULL column is only satisfiable if the client sends it on first write, which is correct — a partial first write *should* fail loudly rather than create a half-record.
+Note the deliberate insert/update split. An `INSERT ... ON CONFLICT DO UPDATE` upsert looks tidier
+but is **wrong here**: SQLite validates the proposed insert row's NOT NULL constraints before it
+resolves the conflict, so a delete — which legitimately carries no fields — fails against any
+table with a NOT NULL payload column. Branching on the row we already fetched for the staleness
+check avoids that, while still letting a partial *first* write fail loudly rather than create a
+half-record.
 
 - [ ] **Step 4: Wire the route**
 
