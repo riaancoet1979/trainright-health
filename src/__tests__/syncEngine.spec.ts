@@ -160,6 +160,60 @@ describe('sync engine', () => {
     expect(seen).toContain('idle');
   });
 
+  it('chunks a large first upload so the server batch cap is never exceeded', async () => {
+    setDeviceToken('tok_1');
+    // Reproduces the real failure: a first upload of 742 records was sent as one
+    // request and rejected with "Send at most 500 mutations per request".
+    for (let i = 0; i < 742; i += 1) await enqueue(mutation(`rec-${i}`));
+
+    const bodies: number[] = [];
+    vi.stubGlobal('fetch', vi.fn((url: unknown, init?: RequestInit) => {
+      if (!String(url).includes('/push')) {
+        return jsonResponse({ revision: 1, hasMore: false, changes: [] });
+      }
+      const body = JSON.parse(String(init!.body)) as { mutations: { id: string }[] };
+      bodies.push(body.mutations.length);
+      if (body.mutations.length > 500) return jsonResponse({ error: { code: 'batch_too_large' } }, 400);
+      return jsonResponse({
+        revision: 1,
+        results: body.mutations.map((m) => ({ id: m.id, status: 'applied' })),
+      });
+    }));
+
+    await syncNow();
+
+    expect(bodies.length).toBeGreaterThan(1);
+    expect(Math.max(...bodies)).toBeLessThanOrEqual(500);
+    expect(bodies.reduce((a, b) => a + b, 0)).toBe(742);
+    expect(await listPending()).toEqual([]);
+  });
+
+  it('keeps batches that already landed when a later batch fails', async () => {
+    setDeviceToken('tok_1');
+    for (let i = 0; i < 400; i += 1) await enqueue(mutation(`rec-${i}`));
+
+    let pushCount = 0;
+    vi.stubGlobal('fetch', vi.fn((url: unknown, init?: RequestInit) => {
+      if (!String(url).includes('/push')) {
+        return jsonResponse({ revision: 1, hasMore: false, changes: [] });
+      }
+      pushCount += 1;
+      if (pushCount === 2) return Promise.reject(new Error('offline'));
+      const body = JSON.parse(String(init!.body)) as { mutations: { id: string }[] };
+      return jsonResponse({
+        revision: 1,
+        results: body.mutations.map((m) => ({ id: m.id, status: 'applied' })),
+      });
+    }));
+
+    await syncNow();
+
+    // The first batch was acked; only the rest remain queued for a later retry.
+    const remaining = await listPending();
+    expect(remaining.length).toBe(200);
+    expect(getStatus().state).toBe('error');
+  });
+
   it('does not run two syncs concurrently', async () => {
     setDeviceToken('tok_1');
     const fetchMock = vi.fn(() => jsonResponse({ revision: 1, hasMore: false, changes: [] }));

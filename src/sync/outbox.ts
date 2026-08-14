@@ -102,6 +102,21 @@ export const discardQuarantined = async (seq: number): Promise<void> => {
   await tx('readwrite', (store) => store.delete(seq));
 };
 
+/**
+ * Return every quarantined item to the pending queue with its attempt count
+ * reset. Needed when items were held for a reason that has since been fixed —
+ * a client bug, or a server that was temporarily rejecting valid payloads.
+ */
+export const retryAllQuarantined = async (): Promise<number> => {
+  const held = (await allItems()).filter((item) => item.state === 'quarantined');
+  for (const item of held) {
+    await tx('readwrite', (store) => store.put({
+      ...item, state: 'pending' as const, attempts: 0, lastError: undefined,
+    }));
+  }
+  return held.length;
+};
+
 export const clearOutbox = async (): Promise<void> => {
   await tx('readwrite', (store) => store.clear());
 };

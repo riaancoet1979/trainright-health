@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto';
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   enqueue, listPending, ack, quarantine, listQuarantined,
-  clearOutbox, countPending, recordAttempt, discardQuarantined,
+  clearOutbox, countPending, recordAttempt, discardQuarantined, retryAllQuarantined,
 } from '../sync/outbox';
 import type { Mutation } from '../sync/types';
 
@@ -82,6 +82,25 @@ describe('outbox', () => {
     await enqueue(mutation('same'));
     await enqueue({ ...mutation('same'), domain: 'custom_food' });
     expect(await countPending()).toBe(2);
+  });
+
+  it('returns quarantined items to pending with attempts reset', async () => {
+    await enqueue(mutation('a'));
+    await enqueue(mutation('b'));
+    for (const item of await listPending()) {
+      await recordAttempt(item.seq!, 'boom');
+      await quarantine(item.seq!, 'boom');
+    }
+    expect(await listPending()).toEqual([]);
+
+    const moved = await retryAllQuarantined();
+    expect(moved).toBe(2);
+
+    const pending = await listPending();
+    expect(pending).toHaveLength(2);
+    expect(pending.every((i) => i.attempts === 0)).toBe(true);
+    expect(pending.every((i) => i.lastError === undefined)).toBe(true);
+    expect(await listQuarantined()).toEqual([]);
   });
 
   it('does not collapse onto a quarantined item', async () => {

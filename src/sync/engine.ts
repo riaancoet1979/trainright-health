@@ -17,6 +17,12 @@ export interface SyncStatus {
 
 const MAX_ATTEMPTS = 6;
 const MAX_PULL_PAGES = 50;
+/**
+ * The server rejects a push of more than 500 mutations. A first upload of a
+ * real dataset is well past that, so pushes are chunked. Kept below the cap
+ * with room to spare, since the server also limits the raw body size.
+ */
+const PUSH_BATCH_SIZE = 200;
 
 let status: SyncStatus = { state: 'unpaired', pending: 0, lastSyncedAt: null, lastError: null };
 let running = false;
@@ -82,9 +88,10 @@ export const syncNow = async (): Promise<void> => {
 
   try {
     const pending = await listPending();
-    if (pending.length) {
-      const results = await pushMutations(pending.map((item) => item.mutation));
-      const byId = new Map(pending.map((item) => [item.mutation.id, item]));
+    for (let offset = 0; offset < pending.length; offset += PUSH_BATCH_SIZE) {
+      const batch = pending.slice(offset, offset + PUSH_BATCH_SIZE);
+      const results = await pushMutations(batch.map((item) => item.mutation));
+      const byId = new Map(batch.map((item) => [item.mutation.id, item]));
       const done: number[] = [];
 
       for (const result of results) {
@@ -98,7 +105,9 @@ export const syncNow = async (): Promise<void> => {
           await quarantine(item.seq, result.reason ?? 'Rejected by server');
         }
       }
+      // Ack each batch as it lands, so a later failure does not undo progress.
       await ack(done);
+      emit({ pending: await countPending() });
     }
 
     let cursor = getCursor();

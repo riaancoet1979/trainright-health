@@ -3,7 +3,7 @@ import { RefreshCw, Link2, Unlink, AlertTriangle } from 'lucide-react';
 import { bootstrapDevice } from '../sync/client';
 import { isPaired, clearDeviceToken } from '../sync/config';
 import { syncNow, subscribeStatus, queueFullUpload, type SyncStatus } from '../sync/engine';
-import { listQuarantined, discardQuarantined } from '../sync/outbox';
+import { listQuarantined, discardQuarantined, retryAllQuarantined } from '../sync/outbox';
 import type { OutboxItem } from '../sync/types';
 
 const SyncSettings = () => {
@@ -132,7 +132,7 @@ const SyncSettings = () => {
             {held.length} change{held.length === 1 ? '' : 's'} could not be sent
           </p>
           <ul className="mt-2 space-y-1 text-xs text-amber-700 dark:text-amber-300">
-            {held.map((item) => (
+            {held.slice(0, 10).map((item) => (
               <li key={item.seq} className="flex justify-between gap-2">
                 <span>{item.mutation.domain}: {item.lastError}</span>
                 <button
@@ -143,7 +143,14 @@ const SyncSettings = () => {
                 </button>
               </li>
             ))}
+            {held.length > 10 && <li>...and {held.length - 10} more</li>}
           </ul>
+          <button
+            onClick={() => { void retryAllQuarantined().then(() => { refreshHeld(); void syncNow(); }); }}
+            className="mt-2 w-full rounded bg-amber-600 px-3 py-1.5 text-xs text-white"
+          >
+            Retry all
+          </button>
         </div>
       )}
 
