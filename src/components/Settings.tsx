@@ -4,6 +4,7 @@ import { getUserSettings, saveUserSettings, getCustomFoods, addCustomFood, updat
 import type { FoodItem } from '../types';
 import { useTheme } from '../contexts/useTheme';
 import { useConfirm, useToast } from './ui';
+import SyncSettings from './SyncSettings';
 
 interface SettingsProps {
   onSettingsSaved: () => void;
@@ -359,6 +360,11 @@ const Settings = ({ onSettingsSaved }: SettingsProps) => {
         <SettingsIcon className="w-6 h-6" />
         Settings
       </h3>
+
+      {/* Cross-device sync */}
+      <div className="mb-6 pb-6 border-b border-gray-200 dark:border-gray-700">
+        <SyncSettings />
+      </div>
 
       {/* Theme Toggle */}
       <div className="mb-6 pb-6 border-b border-gray-200 dark:border-gray-700">

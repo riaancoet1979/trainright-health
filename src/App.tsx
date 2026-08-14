@@ -24,6 +24,7 @@ import type { DailyEntry } from './types';
 import usePushupReminders from './hooks/usePushupReminders';
 import { fetchGarminFile } from './utils/health';
 import { runMigrations } from './utils/migrations';
+import { startAutoSync } from './sync/engine';
 
 // Stamp schema versions for every tracked localStorage store on first boot of
 // versioned code. Runs at module init (before React mounts) so the rest of
@@ -60,6 +61,10 @@ function App() {
   useEffect(() => {
     setDailyEntry(getDailyEntry(selectedDate));
   }, [selectedDate]);
+
+  // Cross-device sync: flush the outbox and pull changes on load, on reconnect,
+  // on tab focus, and every five minutes. Returns its own teardown.
+  useEffect(() => startAutoSync(), []);
 
   // Auto-absorb Garmin sync file when reachable (written by garmin_sync.py)
   useEffect(() => {
