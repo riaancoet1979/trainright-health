@@ -15,6 +15,7 @@ import type {
 import { PHASES, getPhaseForWeek, DEFAULT_DAY_TYPE_TARGETS } from '../data/program';
 import { getUserSettings, saveUserSettings } from './storage';
 import { markExported } from './migrations';
+import { writeStore } from '../sync/writeStore';
 
 export const TRAINING_KEY = 'health_training_v1';
 
@@ -38,7 +39,12 @@ export const getTrainingData = (): TrainingData => {
 };
 
 export const saveTrainingData = (d: TrainingData): void => {
-  localStorage.setItem(TRAINING_KEY, JSON.stringify(d));
+  // Fire-and-forget so the ~9 synchronous callers in Train.tsx keep their
+  // signatures. writeStore persists before its first await, so a read straight
+  // after this call still sees the new value.
+  void writeStore(TRAINING_KEY, d).catch((error) => {
+    console.error('[sync] failed to queue training change', error);
+  });
 };
 
 export const setProgramStartDate = (isoDate: string): void => {
@@ -687,7 +693,9 @@ export const importAllData = (json: string): string[] => {
   const imported: string[] = [];
   for (const k of ALL_KEYS) {
     if (data[k] !== undefined && data[k] !== null) {
-      localStorage.setItem(k, JSON.stringify(data[k]));
+      void writeStore(k, data[k]).catch((error) => {
+        console.error('[sync] failed to queue imported store', k, error);
+      });
       imported.push(k);
     }
   }

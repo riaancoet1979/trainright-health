@@ -1,6 +1,28 @@
 import type { DailyEntry, UserSettings, FoodEntry, Exercise, FoodItem, BodyStatEntry, MealSplit } from '../types';
 import { format } from 'date-fns';
 import { foodDatabase } from '../data/foodDatabase';
+import { writeStore, removeStore } from '../sync/writeStore';
+
+/**
+ * Persist a tracked store and queue the change for sync.
+ *
+ * Deliberately fire-and-forget: every caller is a synchronous mutator used
+ * throughout the component tree, and making them async would ripple into every
+ * call site. The localStorage write inside writeStore happens synchronously
+ * before its first await, so read-after-write still behaves as it always has.
+ * A queueing failure is reported rather than swallowed.
+ */
+const persist = (key: string, value: unknown): void => {
+  void writeStore(key, value).catch((error) => {
+    console.error('[sync] failed to queue change for', key, error);
+  });
+};
+
+const forget = (key: string): void => {
+  void removeStore(key).catch((error) => {
+    console.error('[sync] failed to queue removal for', key, error);
+  });
+};
 
 const STORAGE_KEYS = {
   DAILY_ENTRIES: 'nutrition_tracker_daily_entries',
@@ -127,18 +149,18 @@ export const importAppBackup = (
     }
 
     if (mode === 'replace') {
-      APP_BACKUP_KEYS.forEach((key) => localStorage.removeItem(key));
+      APP_BACKUP_KEYS.forEach((key) => forget(key));
     }
 
     keys.forEach((key) => {
       const value = imported[key];
       if (value === null || value === undefined) {
-        if (mode === 'replace') localStorage.removeItem(key);
+        if (mode === 'replace') forget(key);
         return;
       }
 
       const nextValue = mode === 'merge' ? mergeBackupValue(key, value) : value;
-      localStorage.setItem(key, JSON.stringify(nextValue));
+      persist(key, nextValue);
     });
 
     return { success: true, count: keys.length, keys };
@@ -171,7 +193,7 @@ export const getUserSettings = (): UserSettings => {
 };
 
 export const saveUserSettings = (settings: UserSettings): void => {
-  localStorage.setItem(STORAGE_KEYS.USER_SETTINGS, JSON.stringify(settings));
+  persist(STORAGE_KEYS.USER_SETTINGS, settings);
 };
 
 // ── Meal split (for the "plan my remaining meals" calculator) ──────────────
@@ -324,7 +346,7 @@ export const getYesterdaySteps = (date: Date | string): number => {
 export const saveDailyEntry = (entry: DailyEntry): void => {
   const allEntries = getAllDailyEntries();
   allEntries[entry.date] = entry;
-  localStorage.setItem(STORAGE_KEYS.DAILY_ENTRIES, JSON.stringify(allEntries));
+  persist(STORAGE_KEYS.DAILY_ENTRIES, allEntries);
 };
 
 // Achievements
@@ -344,11 +366,11 @@ export const addAchievement = (achievement: Achievement): void => {
   const items = getAchievements();
   if (items.find(a => a.id === achievement.id)) return; // no duplicates
   items.push(achievement);
-  localStorage.setItem(STORAGE_KEYS.ACHIEVEMENTS, JSON.stringify(items));
+  persist(STORAGE_KEYS.ACHIEVEMENTS, items);
 };
 
 export const clearAchievements = (): void => {
-  localStorage.removeItem(STORAGE_KEYS.ACHIEVEMENTS);
+  forget(STORAGE_KEYS.ACHIEVEMENTS);
 };
 
 // Export / Reset fitness data
@@ -382,7 +404,7 @@ export const importFitnessData = (
       all[dateKey].fitness = fitnessData;
       count++;
     });
-    localStorage.setItem(STORAGE_KEYS.DAILY_ENTRIES, JSON.stringify(all));
+    persist(STORAGE_KEYS.DAILY_ENTRIES, all);
     return { success: true, count };
   } catch (e) {
     return { success: false, count: 0, error: 'Failed to parse backup file. Make sure it is a valid fitness-data JSON.' };
@@ -394,7 +416,7 @@ export const resetAllFitnessData = (): void => {
   Object.keys(all).forEach(k => {
     all[k].fitness = { pushups: { sets: [], totalReps: 0, setsCompleted: 0 }, steps: { steps: 0, goal: 5000 } };
   });
-  localStorage.setItem(STORAGE_KEYS.DAILY_ENTRIES, JSON.stringify(all));
+  persist(STORAGE_KEYS.DAILY_ENTRIES, all);
 };
 
 export const addFoodEntry = (date: Date | string, foodEntry: FoodEntry): void => {
@@ -503,7 +525,7 @@ export const getCustomFoods = (): FoodItem[] => {
 };
 
 export const saveCustomFoods = (foods: FoodItem[]): void => {
-  localStorage.setItem(STORAGE_KEYS.CUSTOM_FOODS, JSON.stringify(foods));
+  persist(STORAGE_KEYS.CUSTOM_FOODS, foods);
 };
 
 export const addCustomFood = (food: Omit<FoodItem, 'id' | 'isCustom'>): FoodItem => {
@@ -687,13 +709,17 @@ export const getBodyStats = (): BodyStatEntry[] => {
     return entry as unknown as BodyStatEntry;
   });
   if (needsSave) {
+    // Deliberately a raw write, NOT persist(): this is a read path that
+    // normalises legacy field names. Queueing it would enqueue every body-stat
+    // record on every page load. The normalisation is deterministic, so every
+    // device reaches the same result independently.
     localStorage.setItem(STORAGE_KEYS.BODY_STATS, JSON.stringify(entries));
   }
   return entries;
 };
 
 const _saveBodyStats = (entries: BodyStatEntry[]): void => {
-  localStorage.setItem(STORAGE_KEYS.BODY_STATS, JSON.stringify(entries));
+  persist(STORAGE_KEYS.BODY_STATS, entries);
 };
 
 export const saveBodyStatEntry = (entry: BodyStatEntry): void => {
