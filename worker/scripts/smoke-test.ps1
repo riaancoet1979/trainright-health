@@ -2,9 +2,19 @@
 #
 # Runs the full Phase A1 acceptance path - pair a device, push a record, pull it
 # back, tombstone it, revoke the device - and prints only PASS/FAIL lines. The
-# bootstrap code is read from a hidden prompt and never echoed or written down.
+# bootstrap code is never echoed or written down.
+#
+# Preferred: set the secret and test it in ONE session, so no copy-paste can go
+# wrong and the value tested is provably the value stored:
 #
 #   cd "c:\Users\ACER\Claude Cowork\Health app\worker"
+#   $code = node -e "console.log(require('crypto').randomBytes(24).toString('base64url'))"
+#   $code | npx wrangler secret put BOOTSTRAP_CODE
+#   Set-Clipboard -Value $code        # then save it to your password manager
+#   .\scripts\smoke-test.ps1 -Code $code
+#
+# Or run it standalone and paste at the hidden prompt:
+#
 #   powershell -ExecutionPolicy Bypass -File scripts\smoke-test.ps1
 #
 # THIS FILE MUST STAY PURE ASCII, and must contain no backtick line
@@ -12,6 +22,8 @@
 # Windows-1252, which turns an em dash into a sequence containing a double
 # quote and terminates strings early; and the repo rewrites LF to CRLF, which
 # breaks backtick continuations.
+
+param([string]$Code)
 
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
@@ -29,8 +41,13 @@ function Check($name, $condition, $detail) {
     }
 }
 
-$secure = Read-Host "Bootstrap code" -AsSecureString
-$code = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure))
+if ($Code) {
+    $code = $Code
+} else {
+    $secure = Read-Host "Bootstrap code" -AsSecureString
+    $code = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure))
+}
+$code = $code.Trim()
 
 Write-Host ""
 Write-Host "Testing $api" -ForegroundColor Cyan
@@ -39,14 +56,41 @@ Write-Host ""
 # 1. Pair a device
 $json = @{ "Content-Type" = "application/json" }
 $bootBody = @{ code = $code; label = "Smoke test"; scope = "app" } | ConvertTo-Json
-try {
-    $boot = Invoke-RestMethod -Uri "$api/v1/auth/bootstrap" -Method Post -Headers $json -Body $bootBody
-    Check "bootstrap issues a token" ($boot.token.Length -ge 40) "token length $($boot.token.Length)"
-} catch {
-    Write-Host "  FAIL  bootstrap rejected - is the code correct?" -ForegroundColor Red
-    Write-Host "        $($_.Exception.Message)"
+
+# A secret change publishes a new Worker version; rollout takes a few seconds,
+# so retry rather than failing on a timing race.
+$boot = $null
+$lastStatus = 0
+for ($attempt = 1; $attempt -le 6; $attempt++) {
+    try {
+        $boot = Invoke-RestMethod -Uri "$api/v1/auth/bootstrap" -Method Post -Headers $json -Body $bootBody
+        break
+    } catch {
+        $lastStatus = 0
+        if ($_.Exception.Response) { $lastStatus = $_.Exception.Response.StatusCode.value__ }
+        if ($lastStatus -eq 401) { break }
+        Write-Host "  ..  attempt $attempt got HTTP $lastStatus, retrying in 10s" -ForegroundColor DarkGray
+        Start-Sleep -Seconds 10
+    }
+}
+
+if (-not $boot) {
+    if ($lastStatus -eq 401) {
+        Write-Host "  FAIL  bootstrap rejected (401): the code does not match the stored secret." -ForegroundColor Red
+        Write-Host "        Fix by setting and testing in one session, with no copy-paste:"
+        Write-Host '          $code = node -e "console.log(require(''crypto'').randomBytes(24).toString(''base64url''))"'
+        Write-Host '          $code | npx wrangler secret put BOOTSTRAP_CODE'
+        Write-Host '          Set-Clipboard -Value $code'
+        Write-Host '          .\scripts\smoke-test.ps1 -Code $code'
+    } elseif ($lastStatus -eq 503) {
+        Write-Host "  FAIL  bootstrap says not_configured (503): no usable secret is set." -ForegroundColor Red
+    } else {
+        Write-Host "  FAIL  bootstrap unreachable (HTTP $lastStatus)." -ForegroundColor Red
+    }
     exit 1
 }
+
+Check "bootstrap issues a token" ($boot.token.Length -ge 40) "token length $($boot.token.Length)"
 Remove-Variable code
 
 $auth = @{ Authorization = "Bearer $($boot.token)"; "Content-Type" = "application/json" }
