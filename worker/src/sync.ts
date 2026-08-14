@@ -120,7 +120,23 @@ const applyMutation = async (db: D1Database, mutation: Mutation): Promise<PushRe
   return { id: mutation.id, status: 'applied' };
 };
 
+/**
+ * Reject an oversized push before `request.json()` buffers it into memory. The
+ * 500-mutation cap below cannot help — it only applies after parsing. This is a
+ * Content-Length check, so a chunked request without the header slips past it;
+ * the runtime's own 128 MB limit is the backstop for that case.
+ */
+const MAX_PUSH_BYTES = 2_000_000;
+
 export const handleSyncPush = async (request: Request, env: Env): Promise<Response> => {
+  const declaredLength = Number(request.headers.get('Content-Length') ?? '0');
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_PUSH_BYTES) {
+    return error(
+      request, env, 413, 'payload_too_large',
+      `Push body must be under ${MAX_PUSH_BYTES} bytes; send fewer mutations per request.`,
+    );
+  }
+
   let body: { mutations?: unknown };
   try {
     body = await request.json();

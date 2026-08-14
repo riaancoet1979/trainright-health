@@ -9,23 +9,27 @@ const base64url = (bytes: Uint8Array): string => {
   return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 };
 
+const sha256 = (value: string): Promise<ArrayBuffer> =>
+  crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
+
 /** SHA-256 as lowercase hex. Tokens are high-entropy, so no salt is needed. */
 export const hashToken = async (token: string): Promise<string> => {
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token));
+  const digest = await sha256(token);
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
 };
 
-/** Length-independent, content-constant-time comparison of two short strings. */
-const timingSafeEqual = (a: string, b: string): boolean => {
-  const encoder = new TextEncoder();
-  const left = encoder.encode(a);
-  const right = encoder.encode(b);
-  let diff = left.length ^ right.length;
-  const length = Math.max(left.length, right.length);
-  for (let i = 0; i < length; i += 1) {
-    diff |= (left[i] ?? 0) ^ (right[i] ?? 0);
-  }
-  return diff === 0;
+/**
+ * Constant-time secret comparison.
+ *
+ * Both sides are hashed to a fixed 32 bytes first, which guarantees the equal
+ * lengths `timingSafeEqual` requires (it throws otherwise) and stops the
+ * comparison leaking the length of the expected secret. A hand-rolled
+ * XOR-over-characters loop is not a substitute: JS engines are free to optimise
+ * it into something that short-circuits.
+ */
+const secretsMatch = async (provided: string, expected: string): Promise<boolean> => {
+  const [a, b] = await Promise.all([sha256(provided), sha256(expected)]);
+  return crypto.subtle.timingSafeEqual(a, b);
 };
 
 export const handleBootstrap = async (request: Request, env: Env): Promise<Response> => {
@@ -51,7 +55,7 @@ export const handleBootstrap = async (request: Request, env: Env): Promise<Respo
 
   const scope = body.scope === 'hermes' || body.scope === 'ingest' ? body.scope : 'app';
 
-  if (typeof body.code !== 'string' || !timingSafeEqual(body.code, env.BOOTSTRAP_CODE)) {
+  if (typeof body.code !== 'string' || !(await secretsMatch(body.code, env.BOOTSTRAP_CODE))) {
     return error(request, env, 401, 'bad_code', 'Bootstrap code rejected.');
   }
 

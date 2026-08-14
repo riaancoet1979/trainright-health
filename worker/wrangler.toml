@@ -1,6 +1,14 @@
 name = "trainright-api"
 main = "src/index.ts"
-compatibility_date = "2026-08-01"
+compatibility_date = "2026-08-14"
+# The vitest pool injects nodejs_compat automatically, so without this flag a
+# Node built-in import would pass tests and fail in production.
+compatibility_flags = ["nodejs_compat"]
+
+[observability]
+enabled = true
+# Single-user API at a handful of requests a day: sample everything.
+head_sampling_rate = 1
 
 [vars]
 ALLOWED_ORIGINS = "https://riaancoet1979.github.io,http://localhost:5173"
@@ -8,7 +16,7 @@ ALLOWED_ORIGINS = "https://riaancoet1979.github.io,http://localhost:5173"
 [[d1_databases]]
 binding = "DB"
 database_name = "trainright"
-# From `npx wrangler d1 create trainright` (region WEUR). Not a secret — it is an
+# From `npx wrangler d1 create trainright` (region WEUR). Not a secret - it is an
 # identifier, not a credential. Local tests use Miniflare's own D1 and ignore it.
 database_id = "4fb83e9e-ebca-4530-8e4f-cb75ed67b94f"
 migrations_dir = "migrations"

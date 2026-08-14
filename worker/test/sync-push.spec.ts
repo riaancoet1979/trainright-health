@@ -151,6 +151,19 @@ describe('POST /v1/sync/push', () => {
     expect(row?.done).toBe(1);
   });
 
+  it('rejects an oversized body before parsing it', async () => {
+    const res = await SELF.fetch('https://api.test/v1/sync/push', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': '5000000',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ mutations: [] }),
+    });
+    expect(res.status).toBe(413);
+  });
+
   it('rejects a batch that is not shaped as {mutations: []}', async () => {
     const res = await SELF.fetch('https://api.test/v1/sync/push', {
       method: 'POST',
