@@ -69,5 +69,61 @@ export const INBODY_2026_05_26: Omit<BodyStatEntry, 'id'> = {
   ],
 };
 
-/** All scans known to the app. Add new InBody printouts here. */
-export const KNOWN_INBODY_SCANS = [INBODY_2026_05_26] as const;
+/** InBody 270 scan — Riaan, 3 July 2026, 13:20 local. */
+export const INBODY_2026_07_03: Omit<BodyStatEntry, 'id'> = {
+  date: '2026-07-03',
+  measuredAt: '2026-07-03T13:20:00',
+  source: 'inbody-270',
+  sourceDevice: 'InBody 270',
+  sourceFingerprint: 'inbody270-2026-07-03T1320-89.8-41.3-18.9',
+
+  // Primary measurements
+  weight: 89.8,
+  bodyFat: 18.9,
+
+  // Core body composition
+  totalBodyWaterL: 53.4,
+  proteinMassKg: 14.3,
+  mineralMassKg: 5.08,
+  bodyFatMassKg: 17.0,
+  skeletalMuscleMassKg: 41.3,
+  fatFreeMassKg: 72.8,
+  bmi: 28.3,
+  smiKgM2: 9.2,
+  inBodyScore: 89,
+  inBodyScoreMax: 100,
+
+  // Metabolic / device estimates (device estimates, NOT medical advice)
+  basalMetabolicRateKcal: 1943,
+  recommendedCalorieIntakeKcal: 2876,
+  waistHipRatio: 0.92,
+  visceralFatLevel: 8,
+  obesityDegreePercent: 129,
+
+  // Device weight-control suggestion (device recommendations, NOT app goals)
+  targetWeightKg: 85.7,
+  weightControlKg: -4.1,
+  fatControlKg: -4.1,
+  muscleControlKg: 0.0,
+
+  // Segmental lean (kg + % of reference + device label)
+  segmentalLean: [
+    { region: 'leftArm',  massKg: 4.37,  refPercent: 122.3, classification: 'Over'   },
+    { region: 'rightArm', massKg: 4.71,  refPercent: 131.7, classification: 'Over'   },
+    { region: 'trunk',    massKg: 32.9,  refPercent: 115.4, classification: 'Over'   },
+    { region: 'leftLeg',  massKg: 9.97,  refPercent: 100.4, classification: 'Normal' },
+    { region: 'rightLeg', massKg: 10.26, refPercent: 103.3, classification: 'Normal' },
+  ],
+
+  // Segmental fat (kg + % of reference + device label)
+  segmentalFat: [
+    { region: 'leftArm',  massKg: 0.8, refPercent: 131.0, classification: 'Normal' },
+    { region: 'rightArm', massKg: 0.7, refPercent: 106.0, classification: 'Normal' },
+    { region: 'trunk',    massKg: 9.9, refPercent: 224.0, classification: 'Over'   },
+    { region: 'leftLeg',  massKg: 2.1, refPercent: 117.9, classification: 'Normal' },
+    { region: 'rightLeg', massKg: 2.2, refPercent: 120.1, classification: 'Normal' },
+  ],
+};
+
+/** All scans known to the app, oldest first. Add new InBody printouts here. */
+export const KNOWN_INBODY_SCANS = [INBODY_2026_05_26, INBODY_2026_07_03] as const;

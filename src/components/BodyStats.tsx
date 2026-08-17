@@ -7,7 +7,8 @@ import {
   deleteBodyStatEntry,
   importBodyAssessment,
 } from '../utils/storage';
-import { INBODY_2026_05_26 } from '../data/inbodyScans';
+import { KNOWN_INBODY_SCANS } from '../data/inbodyScans';
+import { addBodyMetric } from '../utils/training';
 import type { BodyStatEntry, SegmentalMeasurement } from '../types';
 import { useConfirm, useToast } from './ui';
 
@@ -348,21 +349,32 @@ const BodyStats = () => {
     showToast('Entry deleted', { kind: 'success' });
   };
 
-  /** Import the hard-coded 26 May 2026 InBody-270 scan. Idempotent: re-running
+  /** Import every known hard-coded InBody-270 scan. Idempotent: re-running
    *  enriches missing fields without overwriting user edits and never
-   *  duplicates a previously-imported scan. */
+   *  duplicates a previously-imported scan. Also mirrors each scan's weight /
+   *  body-fat into the training store (addBodyMetric dedupes by date) so the
+   *  Analytics trend and weekly review read the same numbers. */
   const handleImportInBody = () => {
-    const r = importBodyAssessment(INBODY_2026_05_26);
+    let added = 0;
+    let enriched = 0;
+    let unchanged = 0;
+    let lastId = '';
+    for (const scan of KNOWN_INBODY_SCANS) {
+      const r = importBodyAssessment(scan);
+      if (r.action === 'added') added++;
+      else if (r.action === 'enriched') enriched++;
+      else unchanged++;
+      lastId = r.id;
+      if (scan.weight !== undefined) {
+        addBodyMetric({ date: scan.date, weight: scan.weight, bfp: scan.bodyFat });
+      }
+    }
     showToast(
-      r.action === 'added'
-        ? 'InBody scan added to 26 May 2026.'
-        : r.action === 'enriched'
-        ? `Enriched existing 26 May entry with ${r.enrichedFields?.length ?? 0} new fields.`
-        : 'No change — scan is already up to date.',
-      { kind: r.action === 'unchanged' ? 'info' : 'success' },
+      `InBody scans synced — ${added} added, ${enriched} enriched, ${unchanged} unchanged.`,
+      { kind: added > 0 || enriched > 0 ? 'success' : 'info' },
     );
     bump();
-    setExpandedId(r.id);
+    setExpandedId(lastId);
   };
 
   // Chart data helpers
@@ -416,10 +428,10 @@ const BodyStats = () => {
             <button
               onClick={handleImportInBody}
               className="btn-secondary px-3 py-2 text-xs flex items-center gap-1"
-              title="Import the 26 May 2026 InBody scan"
+              title="Import InBody 270 scans (26 May & 3 Jul 2026)"
             >
               <Download className="w-3 h-3" />
-              <span className="hidden sm:inline">Import 26 May InBody</span>
+              <span className="hidden sm:inline">Import InBody scans</span>
               <span className="sm:hidden">Import InBody</span>
             </button>
             <button

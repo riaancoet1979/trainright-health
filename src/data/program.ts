@@ -111,7 +111,8 @@ export const PHASES: ProgramPhase[] = [
 
   // ────────────────────────────────────────────────────────
   // PHASE 2 — WEEKS 2–5: FOUNDATION
-  // Calibrated 2026-06-10 after assessment week. Phase-2 sessions are
+  // Calibrated 2026-06-10 after assessment week. Cues updated 2026-06-28
+  // (Week 5 coaching review — shoulder at 5/10, hang milestone hit). Phase-2 sessions are
   // labelled A/B/C/D to match the rotation model (see SESSION_LETTER
   // map below) — internal day keys (mon/tue/thu/sat) are preserved
   // for backward compatibility with logs from the calendar-driven era.
@@ -123,11 +124,11 @@ export const PHASES: ProgramPhase[] = [
       {
         key: 'mon', label: 'A — Lower + Core', goal: 'Build squat strength and single-leg control.',
         exercises: [
-          { id: 'goblet_squat', name: 'Goblet Squat', sets: 4, repsSpec: '×8–12', equipment: 'DB/KB', category: 'squat', rest: '90 s', rir: '2–3', cues: 'Start 16–20 kg. Week 1 @10 kg was far too light. RIR 2–3.', progression: 'At 4×12 → heavier DB or barbell back squat' },
+          { id: 'goblet_squat', name: 'Goblet Squat', sets: 4, repsSpec: '×8–12', equipment: 'DB/KB', category: 'squat', rest: '90 s', rir: '2–3', cues: 'Week 5 target: 32–36 kg. Progressed 10 kg → 20 kg → 30 kg through Phase 2. At 4×12 clean → switch to barbell back squat @40 kg.', progression: 'At 4×12 clean → barbell back squat (Phase 3)' },
           { id: 'box_pistol', name: 'Box Pistol', sets: 3, repsSpec: '×6 / side', perSide: true, equipment: 'Box/Bench', category: 'skill', rest: '90 s', rir: '2', progression: 'Lower the box once all sets clean.', yellowSkip: true },
           { id: 'sl_glute_bridge', name: 'Single-Leg Glute Bridge', sets: 3, repsSpec: '×12 / side', perSide: true, equipment: 'BW', category: 'hinge', rest: '60 s', rir: '2', cues: '2 s pause at top.' },
           { id: 'hollow_rock', name: 'Hollow Rocks', sets: 3, repsSpec: '×12–15', equipment: 'BW', category: 'core', rest: '60 s', cues: 'Earned: held 3×45 s in assessment. Lower back stays pressed down.', regression: 'Hollow hold 20–30 s (id: hollow_hold)' },
-          { id: 'reverse_lunge', name: 'Reverse Lunge (DB)', sets: 3, repsSpec: '×8 / side', perSide: true, equipment: 'DB', category: 'lunge', rest: '90 s', rir: '2', cues: 'Start 10 kg DBs.', yellowSkip: true },
+          { id: 'reverse_lunge', name: 'Reverse Lunge (DB)', sets: 3, repsSpec: '×8 / side', perSide: true, equipment: 'DB', category: 'lunge', rest: '90 s', rir: '2', cues: '12 kg DBs. DO NOT SKIP — this is the pistol-squat prerequisite and has been skipped every week. Include it before extra arm work.', yellowSkip: true },
         ],
       },
       {
@@ -136,8 +137,8 @@ export const PHASES: ProgramPhase[] = [
           { id: 'band_pullup', name: 'Band-Assisted Pull-Up', sets: 4, repsSpec: '×5–8', equipment: 'Band + Bar', category: 'pullup', rest: '2 min', rir: '2', progression: 'At 4×8 → slow 3 s eccentric, then less band stretch' },
           { id: 'inverted_row', name: 'Inverted Row', sets: 4, repsSpec: '×8–12', equipment: 'Barbell + Rack', category: 'row', rest: '90 s', rir: '2', progression: 'Lower bar → feet on box' },
           { id: 'scap_pull_supported', name: 'Scapular Pulls (feet supported)', sets: 2, repsSpec: '×5', equipment: 'Bar + Box', category: 'pullup', rest: '60 s', painFreeOnly: true, cues: 'REGRESSED: pain in week 1. Maximum foot support, partial ROM, only at pain ≤2/10 — otherwise do band scap depressions instead.', progression: 'Less foot support ONLY at pain ≤ 2/10' },
-          { id: 'dead_hang_supported', name: 'Dead Hang (feet supported)', sets: 3, repsSpec: '15–20 s', timed: true, equipment: 'Bar + Box', category: 'pullup', rest: '90 s', painFreeOnly: true, cues: 'Tolerated 3×15 s in week 1. Feet take load as needed. Stop above 2/10. This builds toward the ≥30 s hang gate for strict pull-ups.' },
-          { id: 'single_arm_row', name: 'Single-Arm DB Row', sets: 3, repsSpec: '×10 / side', perSide: true, equipment: 'DB', category: 'row', rest: '90 s', rir: '2', leftFocus: true, cues: '16–20 kg — 10 kg was too light.', yellowSkip: true },
+          { id: 'dead_hang_supported', name: 'Dead Hang (unsupported — milestone hit!)', sets: 3, repsSpec: '28–35 s', timed: true, equipment: 'Bar', category: 'pullup', rest: '90 s', painFreeOnly: true, cues: '✅ MILESTONE: Hit 30 s unsupported on 2026-06-22. Target 30–35 s all sets. ≥30 s pain-free = the gate to start strict pull-up attempts in Phase 3. Stop above 2/10.' },
+          { id: 'single_arm_row', name: 'Single-Arm DB Row', sets: 3, repsSpec: '×10 / side', perSide: true, equipment: 'DB', category: 'row', rest: '90 s', rir: '2', leftFocus: true, cues: '22–24 kg by Week 5 — progressed from 10 kg → 20 kg. Extra set on left side.', yellowSkip: true },
           ...REHAB_BLOCK,
         ],
       },
@@ -148,15 +149,15 @@ export const PHASES: ProgramPhase[] = [
           { id: 'dips', name: 'Dips', sets: 3, repsSpec: '×5–8', equipment: 'Bars', category: 'dip', rest: '2 min', rir: '2', painFreeOnly: true, cues: 'Depth only as pain-free. Build reps before depth. +1 rep per session while ≤2/10.', regression: 'Bench dips' },
           { id: 'pushup', name: 'Push-Up', sets: 3, repsSpec: '×8–15', equipment: 'BW', category: 'bench', rest: '90 s', rir: '2', progression: 'At 3×15 → feet elevated' },
           { id: 'landmine_press', name: 'Landmine Press', sets: 3, repsSpec: '×8 / side', perSide: true, equipment: 'Landmine', category: 'press', rest: '90 s', rir: '2', painFreeOnly: true, leftFocus: true, cues: 'Add 2.5–5 kg — bar-only ×15 was pain-free in week 1. Stop on any pain.', yellowSkip: true },
-          { id: 'cg_floor_press', name: 'Close-Grip Floor Press (triceps)', sets: 3, repsSpec: '×10–12', equipment: 'Barbell', category: 'bench', rest: '90 s', rir: '2', cues: 'Shoulder-safe triceps line. REPLACES all overhead/behind-head extensions — those are banned (pain 2→4/10 in week 1).' },
+          { id: 'cg_floor_press', name: 'Close-Grip Floor Press (triceps)', sets: 3, repsSpec: '×10–12', equipment: 'Barbell', category: 'bench', rest: '90 s', rir: '2', cues: 'Shoulder-safe triceps line. ⛔ REPLACES skull crushers and all behind-head/overhead extensions — shoulder escalated to 5/10 from those. Do NOT skip this. Elbows at 45° on the floor, bar lowers to chest.' },
           { id: 'dead_bug', name: 'Dead Bug', sets: 3, repsSpec: '×10 / side', perSide: true, equipment: 'BW', category: 'core', rest: '60 s' },
         ],
       },
       {
         key: 'sat', label: 'D — Hinge + Skills + Conditioning', goal: 'Posterior chain, L-sit build, engine work.',
         exercises: [
-          { id: 'kb_swing', name: 'KB Swing', sets: 4, repsSpec: '×15', equipment: 'KB', category: 'hinge', rest: '90 s', rir: '2', cues: '16 kg if available — 10 kg too light for ballistic work.' },
-          { id: 'db_rdl', name: 'DB/BB Romanian Deadlift', sets: 4, repsSpec: '×8–10', equipment: 'DB/Barbell', category: 'hinge', rest: '2 min', rir: '2', cues: 'Move to barbell RDL 40–50 kg.' },
+          { id: 'kb_swing', name: 'KB Swing', sets: 4, repsSpec: '×15', equipment: 'KB', category: 'hinge', rest: '90 s', rir: '2', cues: '⬆ 16 kg — jump from 10 kg now. 10 kg has been used for 4 weeks and is too light. Hip snap, arms passive.' },
+          { id: 'db_rdl', name: 'DB/BB Romanian Deadlift', sets: 4, repsSpec: '×8–10', equipment: 'DB/Barbell', category: 'hinge', rest: '2 min', rir: '2', cues: 'Barbell RDL 45–48 kg. Hit 4×12@45 kg on 2026-06-28 — hold 45 kg or push to 48 kg for 4×8–10.' },
           { id: 'tuck_lsit', name: 'Tuck L-Sit Hold', sets: 4, repsSpec: '10–15 s', timed: true, equipment: 'Dip bars', category: 'skill', rest: '90 s', cues: 'Strong in week 1 (4×20 s) — now flatten back, lift knees higher; quality over duration.', progression: 'At 4×15 s → flatten back, lift knees higher', yellowSkip: true },
           { id: 'side_plank', name: 'Side Plank', sets: 3, repsSpec: '25–30 s / side', perSide: true, timed: true, equipment: 'BW', category: 'core', rest: '60 s' },
           { id: 'mobility_block', name: 'Mobility: deep squat, thoracic, wrist prep', sets: 1, repsSpec: '8 min', timed: true, equipment: 'BW', category: 'mobility', rest: '—' },
