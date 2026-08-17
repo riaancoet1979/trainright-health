@@ -1,6 +1,16 @@
 import type { Change } from './types';
 import { writeStore, setSuppressCapture } from './writeStore';
-import { STORE_KEYS, type StoreKey } from './shred';
+import type { StoreKey } from './shred';
+
+/**
+ * health_metrics_v1 is deliberately NOT in shred.ts's STORE_KEYS — the browser
+ * never originates garmin_daily changes, only garmin_sync.py does. Widening the
+ * type here (rather than adding it to STORE_KEYS) keeps writeStore() treating it
+ * as untracked: a plain localStorage.setItem, no diff, no outbound capture.
+ * Kept as a literal, not imported from utils/health.ts, to preserve the existing
+ * one-way dependency direction (utils/ -> sync/, never the reverse).
+ */
+type ApplyTargetKey = StoreKey | 'health_metrics_v1';
 
 const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -16,7 +26,7 @@ const read = (key: string): unknown => {
 };
 
 /** Which store a domain lives in. */
-const STORE_OF: Record<string, StoreKey> = {
+const STORE_OF: Record<string, ApplyTargetKey> = {
   food_entry: 'nutrition_tracker_daily_entries',
   exercise: 'nutrition_tracker_daily_entries',
   pushup_set: 'nutrition_tracker_daily_entries',
@@ -30,6 +40,7 @@ const STORE_OF: Record<string, StoreKey> = {
   set_log: 'health_training_v1',
   body_metric: 'health_training_v1',
   legacy_blob: 'health_training_v1',
+  garmin_daily: 'health_metrics_v1',
 };
 
 const emptyDay = (date: string) => ({
@@ -243,16 +254,43 @@ const applyToUserSettings = (store: unknown, change: Change): unknown => {
 };
 
 /**
+ * garmin_sync.py always sends the full day object, never a partial patch, so
+ * this replaces the whole day rather than merging field-by-field — matching
+ * how body_metric already treats a record as replace-whole-object-by-id.
+ */
+const applyToHealthMetrics = (store: unknown, change: Change): unknown => {
+  const current: Record<string, unknown> = isObject(store) ? { ...store } : { syncedAt: null, days: {} };
+  const days: Record<string, unknown> = isObject(current.days) ? { ...current.days } : {};
+
+  if (change.deleted) {
+    delete days[change.id];
+  } else {
+    days[change.id] = change.fields;
+  }
+
+  current.days = days;
+  return current;
+};
+
+/**
  * Fold pulled changes into the local stores. Capture is suppressed throughout,
  * or every pull would bounce straight back out as a push.
  */
 export const applyChanges = async (changes: Change[]): Promise<void> => {
   if (!changes.length) return;
 
-  const touched = new Map<StoreKey, unknown>();
-  for (const key of STORE_KEYS) touched.set(key, read(key));
+  // Pre-load every store any registered domain can write to — not just
+  // STORE_KEYS. STORE_KEYS is shred.ts's outbound-capture list; STORE_OF's
+  // values are the complete set apply.ts can target, which is a superset once
+  // an apply-only domain (garmin_daily -> health_metrics_v1) exists. Loading
+  // from STORE_KEYS alone left such a store's `touched` entry as undefined,
+  // so applyToHealthMetrics fell back to an empty shell and silently discarded
+  // whatever was already on disk (caught by the "preserves other HealthMetrics
+  // fields untouched" test).
+  const touched = new Map<ApplyTargetKey, unknown>();
+  for (const key of new Set<ApplyTargetKey>(Object.values(STORE_OF))) touched.set(key, read(key));
 
-  const changedStores = new Set<StoreKey>();
+  const changedStores = new Set<ApplyTargetKey>();
 
   for (const change of changes) {
     const storeKey = STORE_OF[change.domain];
@@ -266,6 +304,8 @@ export const applyChanges = async (changes: Change[]): Promise<void> => {
       touched.set(storeKey, applyToTraining(current, change));
     } else if (storeKey === 'nutrition_tracker_user_settings') {
       touched.set(storeKey, applyToUserSettings(current, change));
+    } else if (storeKey === 'health_metrics_v1') {
+      touched.set(storeKey, applyToHealthMetrics(current, change));
     } else {
       touched.set(storeKey, applyToArrayStore(current, change));
     }

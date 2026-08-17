@@ -114,3 +114,53 @@ describe('applyChanges', () => {
     expect(localStorage.length).toBe(0);
   });
 });
+
+describe('applyChanges — garmin_daily', () => {
+  const garminChange = (id: string, over: Partial<Change> = {}): Change => ({
+    domain: 'garmin_daily', id, updatedAt: '2026-08-17T06:30:00.000Z', deleted: false,
+    fields: { source: 'garmin_connect', steps: 8421, rhr: 58, hrv: 47, sleepHours: 7.2 },
+    ...over,
+  });
+
+  it('creates a health_metrics_v1 day the dashboard can read', async () => {
+    await applyChanges([garminChange('2026-08-16')]);
+    const stored = JSON.parse(localStorage.getItem('health_metrics_v1')!);
+    expect(stored.days['2026-08-16']).toMatchObject({ steps: 8421, rhr: 58, hrv: 47 });
+  });
+
+  it('replaces the whole day on a second push rather than merging fields', async () => {
+    await applyChanges([garminChange('2026-08-16')]);
+    await applyChanges([garminChange('2026-08-16', {
+      fields: { source: 'garmin_connect', steps: 9000 },
+    })]);
+    const stored = JSON.parse(localStorage.getItem('health_metrics_v1')!);
+    expect(stored.days['2026-08-16']).toEqual({ source: 'garmin_connect', steps: 9000 });
+  });
+
+  it('removes the day on a tombstone', async () => {
+    await applyChanges([garminChange('2026-08-16')]);
+    await applyChanges([garminChange('2026-08-16', { deleted: true, fields: {} })]);
+    const stored = JSON.parse(localStorage.getItem('health_metrics_v1')!);
+    expect(stored.days).not.toHaveProperty('2026-08-16');
+  });
+
+  it('preserves other HealthMetrics fields untouched', async () => {
+    localStorage.setItem('health_metrics_v1', JSON.stringify({
+      syncedAt: '2026-08-17T06:00:00.000Z',
+      days: { '2026-08-15': { steps: 5000 } },
+      dateRange: { start: '2026-07-17', end: '2026-08-17' },
+    }));
+    await applyChanges([garminChange('2026-08-16')]);
+    const stored = JSON.parse(localStorage.getItem('health_metrics_v1')!);
+    expect(stored.syncedAt).toBe('2026-08-17T06:00:00.000Z');
+    expect(stored.dateRange).toEqual({ start: '2026-07-17', end: '2026-08-17' });
+    expect(stored.days['2026-08-15']).toEqual({ steps: 5000 });
+    expect(stored.days['2026-08-16']).toMatchObject({ steps: 8421 });
+  });
+
+  it('never queues what it applies', async () => {
+    await applyChanges([garminChange('2026-08-16')]);
+    await flush();
+    expect(await listPending()).toEqual([]);
+  });
+});
