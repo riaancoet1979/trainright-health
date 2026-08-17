@@ -8,6 +8,9 @@ Setup (once):
     pip install garminconnect
     python garmin_sync.py --login    (asks for email/password, may ask MFA code;
                                       token is saved so you won't log in again)
+    python garmin_sync.py --bootstrap-sync  (pairs this script with the sync
+                                              Worker so it can push into it;
+                                              asks for the bootstrap code once)
 
 Run (daily, or schedule with Task Scheduler / run_garmin_sync.bat):
     python garmin_sync.py                 (compact log, writes public/ + dist/)
@@ -20,6 +23,7 @@ Privacy:
     importer but deliberately deletes the payload without uploading it.
 """
 
+import getpass
 import json
 import math
 import os
@@ -27,6 +31,8 @@ import re
 import sys
 import tempfile
 from datetime import date, datetime, timedelta
+
+import requests
 
 try:
     from garminconnect import Garmin
@@ -52,6 +58,12 @@ OUT_FILES_FULL = [
     os.path.join(HERE, "dist", OUT_NAME),
 ]
 OUT_FILES_PUBLIC = [os.path.join(HERE, "public", OUT_NAME)]
+# Same protected directory Garmin's own tokens live in — never inside the repo,
+# never served by the app. A device token for pushing into the sync Worker,
+# separate from anything the browser holds.
+SYNC_TOKEN_FILE = os.path.join(TOKEN_DIR, "trainright_sync_token.txt")
+# Matches API_BASE in src/sync/config.ts — keep the two in sync if either changes.
+API_BASE = "https://trainright-api.lifestyleapp.workers.dev"
 DAYS = 32
 VERBOSE = "--verbose" in sys.argv or "-v" in sys.argv
 PUBLIC_ONLY = "--public-only" in sys.argv
@@ -94,6 +106,28 @@ def login() -> Garmin:
     g.login(TOKEN_DIR)
     print(f"Login OK — tokens saved to {TOKEN_DIR}")
     return g
+
+
+def bootstrap_sync() -> None:
+    """One-time pairing so this script can push into the sync Worker. Manual
+    only — never called from main(), so the scheduled run can never hit this
+    interactive prompt."""
+    code = getpass.getpass("Bootstrap code: ")
+    response = requests.post(
+        f"{API_BASE}/v1/auth/bootstrap",
+        json={"code": code, "label": "Garmin Sync (Python)", "scope": "ingest"},
+        timeout=15,
+    )
+    if response.status_code != 200:
+        body = response.json() if response.content else {}
+        message = (body.get("error") or {}).get("message", f"HTTP {response.status_code}")
+        raise RuntimeError(f"Bootstrap failed: {message}")
+
+    token = response.json()["token"]
+    os.makedirs(os.path.dirname(SYNC_TOKEN_FILE), exist_ok=True)
+    with open(SYNC_TOKEN_FILE, "w", encoding="utf-8") as f:
+        f.write(token)
+    print(f"Sync device paired — token saved to {SYNC_TOKEN_FILE}")
 
 
 PRIVATE_KEY_PARTS = (
@@ -505,5 +539,7 @@ def main() -> None:
 if __name__ == "__main__":
     if "--login" in sys.argv:
         login()
+    elif "--bootstrap-sync" in sys.argv:
+        bootstrap_sync()
     else:
         main()

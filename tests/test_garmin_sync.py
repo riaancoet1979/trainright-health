@@ -2,9 +2,11 @@ import json
 import os
 import tempfile
 import unittest
+import unittest.mock
 from datetime import date, timedelta
 from unittest.mock import patch
 
+import garmin_sync
 from garmin_sync import extract_day, sanitize_stats, validate_payload, write_json_transaction
 
 
@@ -236,6 +238,40 @@ class GarminExtractionTests(unittest.TestCase):
     def test_validation_rejects_empty_or_incomplete_day_ranges(self):
         with self.assertRaisesRegex(RuntimeError, "expected 32 daily records"):
             validate_payload({"source": "garmin_connect", "days": {}}, [])
+
+
+class GarminSyncBootstrapTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp_dir = tempfile.mkdtemp()
+        self.token_file = os.path.join(self.tmp_dir, "trainright_sync_token.txt")
+        patcher = patch("garmin_sync.SYNC_TOKEN_FILE", self.token_file)
+        self.addCleanup(patcher.stop)
+        patcher.start()
+
+    def test_bootstrap_sync_saves_token_on_success(self):
+        response = unittest.mock.Mock(status_code=200)
+        response.json.return_value = {"token": "tok_abc123", "deviceId": "d1"}
+        with patch("garmin_sync.getpass.getpass", return_value="the-bootstrap-code"), \
+             patch("garmin_sync.requests.post", return_value=response) as post:
+            garmin_sync.bootstrap_sync()
+
+        self.assertTrue(os.path.isfile(self.token_file))
+        with open(self.token_file, encoding="utf-8") as f:
+            self.assertEqual(f.read().strip(), "tok_abc123")
+        called_url, called_kwargs = post.call_args[0][0], post.call_args[1]
+        self.assertTrue(called_url.endswith("/v1/auth/bootstrap"))
+        self.assertEqual(called_kwargs["json"]["scope"], "ingest")
+        self.assertEqual(called_kwargs["json"]["code"], "the-bootstrap-code")
+
+    def test_bootstrap_sync_does_not_save_a_token_on_rejection(self):
+        response = unittest.mock.Mock(status_code=401)
+        response.json.return_value = {"error": {"code": "bad_code", "message": "Bootstrap code rejected."}}
+        with patch("garmin_sync.getpass.getpass", return_value="wrong"), \
+             patch("garmin_sync.requests.post", return_value=response):
+            with self.assertRaises(RuntimeError):
+                garmin_sync.bootstrap_sync()
+
+        self.assertFalse(os.path.isfile(self.token_file))
 
 
 if __name__ == "__main__":
