@@ -130,6 +130,54 @@ def bootstrap_sync() -> None:
     print(f"Sync device paired — token saved to {SYNC_TOKEN_FILE}")
 
 
+PUSH_BATCH_SIZE = 200  # Server caps a single push at 500 mutations; chunk well under it.
+
+
+def _read_sync_token():
+    if not os.path.isfile(SYNC_TOKEN_FILE):
+        return None
+    with open(SYNC_TOKEN_FILE, encoding="utf-8") as f:
+        token = f.read().strip()
+    return token or None
+
+
+def push_garmin_daily(days: dict, synced_at: str) -> None:
+    """Push each day as a garmin_daily mutation. Never raises — a push failure
+    must never prevent gh-sync.json from having already been written; the next
+    scheduled run is the retry, since Garmin is re-queried fresh every time."""
+    token = _read_sync_token()
+    if not token:
+        print("Sync push skipped: not paired. Run: python garmin_sync.py --bootstrap-sync")
+        return
+
+    mutations = [
+        {"domain": "garmin_daily", "id": day, "updatedAt": synced_at, "deleted": False, "fields": fields}
+        for day, fields in days.items()
+    ]
+
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    pushed = 0
+    try:
+        for i in range(0, len(mutations), PUSH_BATCH_SIZE):
+            batch = mutations[i:i + PUSH_BATCH_SIZE]
+            response = requests.post(
+                f"{API_BASE}/v1/sync/push", headers=headers, json={"mutations": batch}, timeout=30,
+            )
+            if response.status_code != 200:
+                print(f"Sync push failed: HTTP {response.status_code}")
+                return
+            results = response.json().get("results", [])
+            rejected = [r for r in results if r.get("status") == "rejected"]
+            for r in rejected:
+                print(f"Sync push: {r.get('id')} rejected — {r.get('reason')}")
+            pushed += len(batch) - len(rejected)
+    except requests.RequestException as exc:
+        print(f"Sync push failed: {type(exc).__name__}: {exc}")
+        return
+
+    print(f"Sync push: {pushed}/{len(mutations)} day(s) pushed to the phone/PC sync.")
+
+
 PRIVATE_KEY_PARTS = (
     "user", "profile", "uuid", "device", "owner", "email", "password", "token",
     "imageurl", "privacy", "latitude", "longitude", "location", "address", "city",
@@ -534,6 +582,7 @@ def main() -> None:
     for out_file in out_files:
         print(f"Wrote {out_file}")
     print(f"\n{len(out)} days synced. Open the app to absorb it.")
+    push_garmin_daily(out, payload["syncedAt"])
 
 
 if __name__ == "__main__":

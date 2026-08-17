@@ -6,6 +6,8 @@ import unittest.mock
 from datetime import date, timedelta
 from unittest.mock import patch
 
+import requests
+
 import garmin_sync
 from garmin_sync import extract_day, sanitize_stats, validate_payload, write_json_transaction
 
@@ -272,6 +274,80 @@ class GarminSyncBootstrapTests(unittest.TestCase):
                 garmin_sync.bootstrap_sync()
 
         self.assertFalse(os.path.isfile(self.token_file))
+
+
+class GarminSyncPushTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp_dir = tempfile.mkdtemp()
+        self.token_file = os.path.join(self.tmp_dir, "trainright_sync_token.txt")
+        patcher = patch("garmin_sync.SYNC_TOKEN_FILE", self.token_file)
+        self.addCleanup(patcher.stop)
+        patcher.start()
+
+    def _write_token(self, token="tok_test"):
+        with open(self.token_file, "w", encoding="utf-8") as f:
+            f.write(token)
+
+    def test_skips_silently_with_no_token(self):
+        with patch("garmin_sync.requests.post") as post:
+            garmin_sync.push_garmin_daily({"2026-08-16": {"steps": 100}}, "2026-08-17T06:30:00")
+        post.assert_not_called()
+
+    def test_pushes_one_mutation_per_day_with_the_right_shape(self):
+        self._write_token()
+        response = unittest.mock.Mock(status_code=200)
+        response.json.return_value = {"revision": 1, "results": [{"id": "2026-08-16", "status": "applied"}]}
+        with patch("garmin_sync.requests.post", return_value=response) as post:
+            garmin_sync.push_garmin_daily({"2026-08-16": {"steps": 100, "rhr": 55}}, "2026-08-17T06:30:00")
+
+        post.assert_called_once()
+        url, kwargs = post.call_args[0][0], post.call_args[1]
+        self.assertTrue(url.endswith("/v1/sync/push"))
+        self.assertEqual(kwargs["headers"]["Authorization"], "Bearer tok_test")
+        mutation = kwargs["json"]["mutations"][0]
+        self.assertEqual(mutation["domain"], "garmin_daily")
+        self.assertEqual(mutation["id"], "2026-08-16")
+        self.assertEqual(mutation["deleted"], False)
+        self.assertEqual(mutation["fields"], {"steps": 100, "rhr": 55})
+        self.assertEqual(mutation["updatedAt"], "2026-08-17T06:30:00")
+
+    def test_chunks_at_200_mutations_per_request(self):
+        self._write_token()
+        fake_days = {f"2020-01-{i:02d}" if i <= 31 else f"2020-02-{i - 31:02d}": {"steps": i} for i in range(1, 451)}
+        response = unittest.mock.Mock(status_code=200)
+        response.json.return_value = {"revision": 1, "results": []}
+
+        with patch("garmin_sync.requests.post", return_value=response) as post:
+            garmin_sync.push_garmin_daily(fake_days, "2026-08-17T06:30:00")
+
+        sizes = [len(call.kwargs["json"]["mutations"]) for call in post.call_args_list]
+        self.assertGreater(len(sizes), 1)
+        self.assertTrue(all(size <= 200 for size in sizes))
+        self.assertEqual(sum(sizes), 450)
+
+    def test_a_failed_request_does_not_raise(self):
+        self._write_token()
+        with patch("garmin_sync.requests.post", side_effect=requests.RequestException("offline")):
+            try:
+                garmin_sync.push_garmin_daily({"2026-08-16": {"steps": 100}}, "2026-08-17T06:30:00")
+            except Exception as exc:  # noqa: BLE001 - this is exactly what must not happen
+                self.fail(f"push_garmin_daily raised {exc!r}; it must never block the local write")
+
+    def test_a_rejected_day_does_not_stop_the_rest_of_the_batch(self):
+        self._write_token()
+        response = unittest.mock.Mock(status_code=200)
+        response.json.return_value = {
+            "revision": 1,
+            "results": [
+                {"id": "2026-08-15", "status": "rejected", "reason": "bad field"},
+                {"id": "2026-08-16", "status": "applied"},
+            ],
+        }
+        with patch("garmin_sync.requests.post", return_value=response):
+            # Must not raise even though one day was rejected server-side.
+            garmin_sync.push_garmin_daily(
+                {"2026-08-15": {"steps": 1}, "2026-08-16": {"steps": 2}}, "2026-08-17T06:30:00",
+            )
 
 
 if __name__ == "__main__":
