@@ -88,4 +88,21 @@ export const SYNC_DOMAINS: Record<string, DomainSpec> = {
   ),
 
   legacy_blob: domain('legacy_blob', ['kind', 'payload'], { json: ['payload'] }),
+
+  // Apply-only from the browser's perspective: only garmin_sync.py (device
+  // scope 'ingest') ever pushes this domain. Field list mirrors DayHealth in
+  // src/utils/health.ts:22-60 exactly.
+  garmin_daily: domain(
+    'garmin_daily',
+    ['source', 'steps', 'stepGoal', 'distanceKm', 'totalCalories', 'activeCalories',
+     'bmrCalories', 'rhr', 'minHeartRate', 'maxHeartRate', 'hrv', 'hrvWeeklyAvg',
+     'hrvStatus', 'sleepHours', 'sleepScore', 'deepSleepHours', 'lightSleepHours',
+     'remSleepHours', 'awakeSleepHours', 'averageSleepStress', 'averageStress',
+     'stressQualifier', 'bodyBatteryWake', 'bodyBatteryHigh', 'bodyBatteryLow',
+     'bodyBatteryLatest', 'bodyBatteryCharged', 'bodyBatteryDrained', 'averageSpo2',
+     'lowestSpo2', 'averageRespiration', 'moderateIntensityMinutes',
+     'vigorousIntensityMinutes', 'floorsAscended', 'sedentaryHours', 'activeHours',
+     'garminDetails'],
+    { json: ['garminDetails'] },
+  ),
 };

@@ -3,7 +3,7 @@ import { describe, it, expect } from 'vitest';
 
 const EXPECTED_TABLES = [
   'achievement', 'body_metric', 'body_stat', 'custom_food', 'daily_steps',
-  'device', 'exercise', 'exercise_log', 'food_entry', 'legacy_blob',
+  'device', 'exercise', 'exercise_log', 'food_entry', 'garmin_daily', 'legacy_blob',
   'meta', 'pushup_set', 'session_log', 'set_log', 'user_settings',
 ];
 
