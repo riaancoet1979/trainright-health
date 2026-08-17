@@ -16,3 +16,7 @@ public/garmin_health.json
 
 # User-local helper scripts (push_*.bat, fix_*.bat) — preserved but not tracked
 /*.local.bat
+
+# Personal full-app backup exports (Settings → export backup) — same privacy
+# class as the Garmin payload above; never commit.
+/trainright-health-backup-*.json
