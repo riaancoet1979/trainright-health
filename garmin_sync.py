@@ -111,8 +111,27 @@ def login() -> Garmin:
 def bootstrap_sync() -> None:
     """One-time pairing so this script can push into the sync Worker. Manual
     only — never called from main(), so the scheduled run can never hit this
-    interactive prompt."""
-    code = getpass.getpass("Bootstrap code: ")
+    interactive prompt.
+
+    Reads TRAINRIGHT_BOOTSTRAP_CODE if set, so the code can be piped in without
+    a masked prompt — pasting into a hidden prompt silently yields nothing or a
+    partial value on some Windows terminals, which is indistinguishable from a
+    wrong code without the length echo below."""
+    code = os.environ.get("TRAINRIGHT_BOOTSTRAP_CODE") or getpass.getpass("Bootstrap code: ")
+    # Strip: a trailing newline or space from a paste would otherwise be sent
+    # verbatim and rejected, with nothing on screen to explain why.
+    code = code.strip()
+    if not code:
+        raise RuntimeError(
+            "No bootstrap code received. If you pasted into the hidden prompt and "
+            "nothing registered, set it as an environment variable instead:\n"
+            '  set TRAINRIGHT_BOOTSTRAP_CODE=your-code-here\n'
+            "  python garmin_sync.py --bootstrap-sync"
+        )
+    # Length only, never the value — enough to tell a truncated paste from a
+    # wrong code, which is the exact ambiguity that made this fail silently.
+    print(f"Read a {len(code)}-character bootstrap code.")
+
     response = requests.post(
         f"{API_BASE}/v1/auth/bootstrap",
         json={"code": code, "label": "Garmin Sync (Python)", "scope": "ingest"},

@@ -265,6 +265,34 @@ class GarminSyncBootstrapTests(unittest.TestCase):
         self.assertEqual(called_kwargs["json"]["scope"], "ingest")
         self.assertEqual(called_kwargs["json"]["code"], "the-bootstrap-code")
 
+    def test_bootstrap_sync_strips_whitespace_from_a_pasted_code(self):
+        response = unittest.mock.Mock(status_code=200)
+        response.json.return_value = {"token": "tok_abc123", "deviceId": "d1"}
+        with patch("garmin_sync.getpass.getpass", return_value="  the-code\n"), \
+             patch("garmin_sync.requests.post", return_value=response) as post:
+            garmin_sync.bootstrap_sync()
+
+        self.assertEqual(post.call_args[1]["json"]["code"], "the-code")
+
+    def test_bootstrap_sync_reads_the_env_var_without_prompting(self):
+        response = unittest.mock.Mock(status_code=200)
+        response.json.return_value = {"token": "tok_env", "deviceId": "d1"}
+        with patch.dict(os.environ, {"TRAINRIGHT_BOOTSTRAP_CODE": "from-env"}), \
+             patch("garmin_sync.getpass.getpass", side_effect=AssertionError("must not prompt")), \
+             patch("garmin_sync.requests.post", return_value=response) as post:
+            garmin_sync.bootstrap_sync()
+
+        self.assertEqual(post.call_args[1]["json"]["code"], "from-env")
+
+    def test_bootstrap_sync_rejects_an_empty_code_without_calling_the_server(self):
+        with patch("garmin_sync.getpass.getpass", return_value="   "), \
+             patch("garmin_sync.requests.post") as post:
+            with self.assertRaisesRegex(RuntimeError, "No bootstrap code received"):
+                garmin_sync.bootstrap_sync()
+
+        post.assert_not_called()
+        self.assertFalse(os.path.isfile(self.token_file))
+
     def test_bootstrap_sync_does_not_save_a_token_on_rejection(self):
         response = unittest.mock.Mock(status_code=401)
         response.json.return_value = {"error": {"code": "bad_code", "message": "Bootstrap code rejected."}}
