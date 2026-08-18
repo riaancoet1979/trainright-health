@@ -13,7 +13,17 @@ export interface SyncStatus {
   pending: number;
   lastSyncedAt: string | null;
   lastError: string | null;
+  /**
+   * How many changes have been pulled and written to local storage since this
+   * page loaded. Components read localStorage into React state on mount and
+   * never re-read, so a pull updates the data underneath a stale UI — this is
+   * what lets the UI offer a reload instead of silently looking broken.
+   */
+  appliedSinceLoad: number;
 }
+
+/** Fired after a pull writes changes locally, so views can refresh themselves. */
+export const SYNC_APPLIED_EVENT = 'trainright-sync-applied';
 
 const MAX_ATTEMPTS = 6;
 const MAX_PULL_PAGES = 50;
@@ -24,7 +34,9 @@ const MAX_PULL_PAGES = 50;
  */
 const PUSH_BATCH_SIZE = 200;
 
-let status: SyncStatus = { state: 'unpaired', pending: 0, lastSyncedAt: null, lastError: null };
+let status: SyncStatus = {
+  state: 'unpaired', pending: 0, lastSyncedAt: null, lastError: null, appliedSinceLoad: 0,
+};
 let running = false;
 const listeners = new Set<(status: SyncStatus) => void>();
 
@@ -85,15 +97,20 @@ export const syncNow = async (): Promise<void> => {
 
   running = true;
   emit({ state: 'syncing', lastError: null });
-
-  // If this build understands domains an earlier one didn't, re-pull from zero:
-  // changes for an unknown domain were dropped while the cursor advanced past
-  // them, so they are otherwise lost to this device forever.
-  if (resetCursorIfDomainsChanged(KNOWN_DOMAINS)) {
-    console.info('[sync] new record types available — re-pulling full history');
-  }
+  let applied = 0;
 
   try {
+    // Inside the try on purpose: anything that throws before it would leave
+    // `running` stuck true (the reset lives in `finally`), silently disabling
+    // every future sync for the life of the page.
+    //
+    // If this build understands domains an earlier one didn't, re-pull from
+    // zero: changes for an unknown domain were dropped while the cursor
+    // advanced past them, so they are otherwise lost to this device forever.
+    if (resetCursorIfDomainsChanged(KNOWN_DOMAINS)) {
+      console.info('[sync] new record types available — re-pulling full history');
+    }
+
     const pending = await listPending();
     for (let offset = 0; offset < pending.length; offset += PUSH_BATCH_SIZE) {
       const batch = pending.slice(offset, offset + PUSH_BATCH_SIZE);
@@ -120,7 +137,10 @@ export const syncNow = async (): Promise<void> => {
     let cursor = getCursor();
     for (let page = 0; page < MAX_PULL_PAGES; page += 1) {
       const result = await pullChanges(cursor);
-      if (result.changes.length) await applyChanges(result.changes);
+      if (result.changes.length) {
+        await applyChanges(result.changes);
+        applied += result.changes.length;
+      }
       cursor = result.revision;
       setCursor(cursor);
       if (!result.hasMore) break;
@@ -131,7 +151,14 @@ export const syncNow = async (): Promise<void> => {
       pending: await countPending(),
       lastSyncedAt: new Date().toISOString(),
       lastError: null,
+      appliedSinceLoad: status.appliedSinceLoad + applied,
     });
+
+    // Views read localStorage on mount and never re-read, so without this the
+    // data changes underneath a stale UI and a sync looks like it did nothing.
+    if (applied > 0 && typeof window !== 'undefined') {
+      window.dispatchEvent(new Event(SYNC_APPLIED_EVENT));
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
 

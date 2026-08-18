@@ -278,6 +278,68 @@ describe('sync engine', () => {
     expect(since[0]).toBe('0');
   });
 
+  it('counts applied changes and announces them so stale views can refresh', async () => {
+    setDeviceToken('tok_1');
+    localStorage.setItem('trainright_sync_known_domains', JSON.stringify([...KNOWN_DOMAINS].sort()));
+
+    let announced = 0;
+    const listener = () => { announced += 1; };
+    window.addEventListener('trainright-sync-applied', listener);
+
+    // appliedSinceLoad counts for the life of the page, and the module is not
+    // reloaded between tests — so assert the delta, not an absolute.
+    const before = getStatus().appliedSinceLoad;
+
+    vi.stubGlobal('fetch', vi.fn(() => jsonResponse({
+      revision: 5, hasMore: false,
+      changes: [{
+        domain: 'custom_food', id: 'c1', updatedAt: '2026-08-18T09:00:00.000Z',
+        deleted: false, fields: { name: 'Bacon', calories: 520, protein: 37, carbs: 0, fats: 42 },
+      }],
+    })));
+
+    await syncNow();
+    window.removeEventListener('trainright-sync-applied', listener);
+
+    expect(getStatus().appliedSinceLoad).toBe(before + 1);
+    expect(announced).toBe(1);
+  });
+
+  it('stays silent when a sync applies nothing', async () => {
+    setDeviceToken('tok_1');
+    localStorage.setItem('trainright_sync_known_domains', JSON.stringify([...KNOWN_DOMAINS].sort()));
+
+    let announced = 0;
+    const listener = () => { announced += 1; };
+    window.addEventListener('trainright-sync-applied', listener);
+
+    vi.stubGlobal('fetch', vi.fn(() => jsonResponse({ revision: 5, hasMore: false, changes: [] })));
+
+    await syncNow();
+    window.removeEventListener('trainright-sync-applied', listener);
+
+    expect(announced).toBe(0);
+  });
+
+  it('does not wedge future syncs if the pre-pull domain check throws', async () => {
+    setDeviceToken('tok_1');
+    // localStorage failing (quota, privacy mode) must not leave `running` stuck
+    // true, which would silently disable syncing for the life of the page.
+    const setItem = Storage.prototype.setItem;
+    Storage.prototype.setItem = () => { throw new Error('quota exceeded'); };
+    try {
+      await syncNow();
+    } finally {
+      Storage.prototype.setItem = setItem;
+    }
+    expect(getStatus().state).toBe('error');
+
+    // The next sync must still run rather than no-op forever.
+    vi.stubGlobal('fetch', vi.fn(() => jsonResponse({ revision: 9, hasMore: false, changes: [] })));
+    await syncNow();
+    expect(getStatus().state).toBe('idle');
+  });
+
   it('does not run two syncs concurrently', async () => {
     setDeviceToken('tok_1');
     const fetchMock = vi.fn(() => jsonResponse({ revision: 1, hasMore: false, changes: [] }));

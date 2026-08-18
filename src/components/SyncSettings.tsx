@@ -119,7 +119,28 @@ const SyncSettings = () => {
             {status?.lastSyncedAt ? new Date(status.lastSyncedAt).toLocaleTimeString() : 'never'}
           </dd>
         </div>
+        <div className="flex justify-between">
+          <dt>Received this session</dt>
+          <dd data-testid="sync-applied" className="text-gray-900 dark:text-gray-100">
+            {status?.appliedSinceLoad ?? 0}
+          </dd>
+        </div>
       </dl>
+
+      {(status?.appliedSinceLoad ?? 0) > 0 && (
+        <div className="rounded border border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-900/20 p-3">
+          <p className="text-sm text-blue-800 dark:text-blue-200">
+            {status!.appliedSinceLoad} change{status!.appliedSinceLoad === 1 ? '' : 's'} received
+            from your other devices. Reload to see them everywhere.
+          </p>
+          <button
+            onClick={() => window.location.reload()}
+            className="mt-2 w-full rounded bg-blue-600 px-3 py-1.5 text-sm text-white"
+          >
+            Reload now
+          </button>
+        </div>
+      )}
 
       {status?.lastError && (
         <p role="alert" className="text-sm text-red-600 dark:text-red-400">{status.lastError}</p>
