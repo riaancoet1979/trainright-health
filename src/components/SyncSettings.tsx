@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { RefreshCw, Link2, Unlink, AlertTriangle } from 'lucide-react';
 import { bootstrapDevice } from '../sync/client';
 import { isPaired, clearDeviceToken } from '../sync/config';
-import { syncNow, subscribeStatus, queueFullUpload, type SyncStatus } from '../sync/engine';
+import { syncNow, subscribeStatus, queueFullUpload, forceFullResync, type SyncStatus } from '../sync/engine';
 import { listQuarantined, discardQuarantined, retryAllQuarantined } from '../sync/outbox';
 import type { OutboxItem } from '../sync/types';
 
@@ -168,6 +168,17 @@ const SyncSettings = () => {
           <Unlink className="w-4 h-4" /> Unpair
         </button>
       </div>
+
+      <button
+        onClick={() => void forceFullResync()}
+        className="w-full rounded border border-gray-300 dark:border-gray-600 px-4 py-2 text-sm text-gray-700 dark:text-gray-300"
+      >
+        Force full re-sync
+      </button>
+      <p className="text-xs text-gray-500 dark:text-gray-400">
+        Re-downloads your whole history from the server. Safe to run any time — use it if this
+        device looks out of step with your others.
+      </p>
     </div>
   );
 };

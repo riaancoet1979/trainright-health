@@ -43,6 +43,12 @@ const STORE_OF: Record<string, ApplyTargetKey> = {
   garmin_daily: 'health_metrics_v1',
 };
 
+/**
+ * Every domain this build can apply. Used to detect that an upgrade taught the
+ * client about a domain it previously discarded — see resetCursorIfDomainsChanged.
+ */
+export const KNOWN_DOMAINS: readonly string[] = Object.keys(STORE_OF);
+
 const emptyDay = (date: string) => ({
   date,
   foodEntries: [] as unknown[],

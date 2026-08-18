@@ -1,9 +1,9 @@
-import { getCursor, setCursor, isPaired } from './config';
+import { getCursor, setCursor, isPaired, resetCursor, resetCursorIfDomainsChanged } from './config';
 import { pushMutations, pullChanges } from './client';
 import {
   listPending, ack, quarantine, recordAttempt, countPending, enqueue,
 } from './outbox';
-import { applyChanges } from './apply';
+import { applyChanges, KNOWN_DOMAINS } from './apply';
 import { shredStore, STORE_KEYS } from './shred';
 
 export type SyncState = 'unpaired' | 'idle' | 'syncing' | 'error';
@@ -86,6 +86,13 @@ export const syncNow = async (): Promise<void> => {
   running = true;
   emit({ state: 'syncing', lastError: null });
 
+  // If this build understands domains an earlier one didn't, re-pull from zero:
+  // changes for an unknown domain were dropped while the cursor advanced past
+  // them, so they are otherwise lost to this device forever.
+  if (resetCursorIfDomainsChanged(KNOWN_DOMAINS)) {
+    console.info('[sync] new record types available — re-pulling full history');
+  }
+
   try {
     const pending = await listPending();
     for (let offset = 0; offset < pending.length; offset += PUSH_BATCH_SIZE) {
@@ -142,6 +149,16 @@ export const syncNow = async (): Promise<void> => {
   } finally {
     running = false;
   }
+};
+
+/**
+ * Forget the cursor and pull the whole history again. Applying a change is
+ * idempotent, so this is always safe — it costs bandwidth, never correctness.
+ * The manual escape hatch for when a device looks out of step.
+ */
+export const forceFullResync = async (): Promise<void> => {
+  resetCursor();
+  await syncNow();
 };
 
 /** Sync on load, on reconnect, on tab focus, and every five minutes. */

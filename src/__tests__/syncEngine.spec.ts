@@ -1,8 +1,9 @@
 import 'fake-indexeddb/auto';
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { syncNow, getStatus, subscribeStatus, queueFullUpload } from '../sync/engine';
+import { syncNow, getStatus, subscribeStatus, queueFullUpload, forceFullResync } from '../sync/engine';
+import { KNOWN_DOMAINS } from '../sync/apply';
 import { enqueue, listPending, listQuarantined, clearOutbox } from '../sync/outbox';
-import { setDeviceToken, clearDeviceToken, getCursor } from '../sync/config';
+import { setDeviceToken, clearDeviceToken, getCursor, setCursor } from '../sync/config';
 import { getCustomFoods } from '../utils/storage';
 import type { Mutation } from '../sync/types';
 
@@ -212,6 +213,69 @@ describe('sync engine', () => {
     const remaining = await listPending();
     expect(remaining.length).toBe(200);
     expect(getStatus().state).toBe('error');
+  });
+
+  it('re-pulls from zero when a build learns a domain it used to discard', async () => {
+    // Exactly the phone's situation: an older build pulled garmin_daily
+    // records, dropped them as unknown, and advanced its cursor past them.
+    setDeviceToken('tok_1');
+    localStorage.setItem('trainright_sync_known_domains', JSON.stringify(['custom_food']));
+    setCursor(226);
+
+    const since: string[] = [];
+    vi.stubGlobal('fetch', vi.fn((url: unknown) => {
+      const parsed = new URL(String(url));
+      if (parsed.pathname.endsWith('/pull')) {
+        since.push(parsed.searchParams.get('since') ?? '');
+        return jsonResponse({ revision: 300, hasMore: false, changes: [] });
+      }
+      return jsonResponse({ revision: 300, results: [] });
+    }));
+
+    await syncNow();
+
+    // Asked from 0, not from 226 — the skipped records are reachable again.
+    expect(since[0]).toBe('0');
+  });
+
+  it('does not re-pull from zero when the domain set is unchanged', async () => {
+    setDeviceToken('tok_1');
+    localStorage.setItem('trainright_sync_known_domains', JSON.stringify([...KNOWN_DOMAINS].sort()));
+    setCursor(226);
+
+    const since: string[] = [];
+    vi.stubGlobal('fetch', vi.fn((url: unknown) => {
+      const parsed = new URL(String(url));
+      if (parsed.pathname.endsWith('/pull')) {
+        since.push(parsed.searchParams.get('since') ?? '');
+        return jsonResponse({ revision: 300, hasMore: false, changes: [] });
+      }
+      return jsonResponse({ revision: 300, results: [] });
+    }));
+
+    await syncNow();
+
+    expect(since[0]).toBe('226');
+  });
+
+  it('forceFullResync re-pulls the whole history on demand', async () => {
+    setDeviceToken('tok_1');
+    localStorage.setItem('trainright_sync_known_domains', JSON.stringify([...KNOWN_DOMAINS].sort()));
+    setCursor(226);
+
+    const since: string[] = [];
+    vi.stubGlobal('fetch', vi.fn((url: unknown) => {
+      const parsed = new URL(String(url));
+      if (parsed.pathname.endsWith('/pull')) {
+        since.push(parsed.searchParams.get('since') ?? '');
+        return jsonResponse({ revision: 300, hasMore: false, changes: [] });
+      }
+      return jsonResponse({ revision: 300, results: [] });
+    }));
+
+    await forceFullResync();
+
+    expect(since[0]).toBe('0');
   });
 
   it('does not run two syncs concurrently', async () => {
