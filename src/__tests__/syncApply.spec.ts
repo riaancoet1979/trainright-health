@@ -116,6 +116,13 @@ describe('applyChanges', () => {
 });
 
 describe('applyChanges — garmin_daily', () => {
+  // Own isolation: this is a sibling describe, so the parent's beforeEach does
+  // not apply and localStorage would otherwise carry over between blocks.
+  beforeEach(async () => {
+    localStorage.clear();
+    await clearOutbox();
+  });
+
   const garminChange = (id: string, over: Partial<Change> = {}): Change => ({
     domain: 'garmin_daily', id, updatedAt: '2026-08-17T06:30:00.000Z', deleted: false,
     fields: { source: 'garmin_connect', steps: 8421, rhr: 58, hrv: 47, sleepHours: 7.2 },
@@ -144,7 +151,7 @@ describe('applyChanges — garmin_daily', () => {
     expect(stored.days).not.toHaveProperty('2026-08-16');
   });
 
-  it('preserves other HealthMetrics fields untouched', async () => {
+  it('preserves other HealthMetrics fields and existing days', async () => {
     localStorage.setItem('health_metrics_v1', JSON.stringify({
       syncedAt: '2026-08-17T06:00:00.000Z',
       days: { '2026-08-15': { steps: 5000 } },
@@ -152,15 +159,40 @@ describe('applyChanges — garmin_daily', () => {
     }));
     await applyChanges([garminChange('2026-08-16')]);
     const stored = JSON.parse(localStorage.getItem('health_metrics_v1')!);
-    expect(stored.syncedAt).toBe('2026-08-17T06:00:00.000Z');
     expect(stored.dateRange).toEqual({ start: '2026-07-17', end: '2026-08-17' });
     expect(stored.days['2026-08-15']).toEqual({ steps: 5000 });
     expect(stored.days['2026-08-16']).toMatchObject({ steps: 8421 });
+    // syncedAt intentionally advances — see the dedicated tests below.
+    expect(stored.syncedAt).toBe('2026-08-17T06:30:00.000Z');
   });
 
   it('never queues what it applies', async () => {
     await applyChanges([garminChange('2026-08-16')]);
     await flush();
     expect(await listPending()).toEqual([]);
+  });
+
+  it('records syncedAt so the staleness banner reflects the new data', async () => {
+    // Without this the device shows fresh Garmin metrics while still reporting
+    // "last synced 73 d ago" from whenever it last absorbed gh-sync.json.
+    await applyChanges([garminChange('2026-08-16')]);
+    const stored = JSON.parse(localStorage.getItem('health_metrics_v1')!);
+    expect(stored.syncedAt).toBe('2026-08-17T06:30:00.000Z');
+  });
+
+  it('keeps the newest syncedAt when changes arrive out of order', async () => {
+    await applyChanges([garminChange('2026-08-16', { updatedAt: '2026-08-17T06:30:00.000Z' })]);
+    await applyChanges([garminChange('2026-08-15', { updatedAt: '2026-08-10T06:30:00.000Z' })]);
+    const stored = JSON.parse(localStorage.getItem('health_metrics_v1')!);
+    expect(stored.syncedAt).toBe('2026-08-17T06:30:00.000Z');
+  });
+
+  it('does not regress syncedAt that is already newer', async () => {
+    localStorage.setItem('health_metrics_v1', JSON.stringify({
+      syncedAt: '2026-08-18T09:00:00.000Z', days: {},
+    }));
+    await applyChanges([garminChange('2026-08-16')]);
+    const stored = JSON.parse(localStorage.getItem('health_metrics_v1')!);
+    expect(stored.syncedAt).toBe('2026-08-18T09:00:00.000Z');
   });
 });

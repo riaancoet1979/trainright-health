@@ -275,6 +275,19 @@ const applyToHealthMetrics = (store: unknown, change: Change): unknown => {
   }
 
   current.days = days;
+
+  // Record when Garmin was actually read. garmin_sync.py sends its own
+  // syncedAt as each change's updatedAt, so this is the true sync time — and
+  // it is what the staleness banner reads. Without it a device shows fresh
+  // metrics while still reporting "last synced 73 d ago" from whenever it last
+  // absorbed a local gh-sync.json. Keep the newest so out-of-order changes
+  // cannot drag it backwards.
+  const incoming = Date.parse(change.updatedAt);
+  const existing = typeof current.syncedAt === 'string' ? Date.parse(current.syncedAt) : NaN;
+  if (!Number.isNaN(incoming) && (Number.isNaN(existing) || incoming > existing)) {
+    current.syncedAt = change.updatedAt;
+  }
+
   return current;
 };
 
