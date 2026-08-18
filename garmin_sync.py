@@ -123,9 +123,13 @@ def bootstrap_sync() -> None:
     code = code.strip()
     if not code:
         raise RuntimeError(
-            "No bootstrap code received. If you pasted into the hidden prompt and "
-            "nothing registered, set it as an environment variable instead:\n"
-            '  set TRAINRIGHT_BOOTSTRAP_CODE=your-code-here\n'
+            "No bootstrap code received — the hidden prompt registered nothing.\n"
+            "Copy the code to your clipboard, then in PowerShell:\n"
+            "  $env:TRAINRIGHT_BOOTSTRAP_CODE = Get-Clipboard\n"
+            "  python garmin_sync.py --bootstrap-sync\n"
+            "  Remove-Item Env:TRAINRIGHT_BOOTSTRAP_CODE\n"
+            "Or in Command Prompt:\n"
+            "  set TRAINRIGHT_BOOTSTRAP_CODE=your-code-here\n"
             "  python garmin_sync.py --bootstrap-sync"
         )
     # Length only, never the value — enough to tell a truncated paste from a
