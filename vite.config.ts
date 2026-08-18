@@ -1,3 +1,4 @@
+import { execSync } from 'node:child_process'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
@@ -5,8 +6,30 @@ import { VitePWA } from 'vite-plugin-pwa'
 // https://vite.dev/config/
 const BASE = '/trainright-health/'
 
+/**
+ * A build stamp baked in at compile time, shown in the app header. PWAs cache
+ * aggressively — especially the iOS home-screen one — so without this there is
+ * no way to tell at a glance whether a device is running the latest deploy.
+ * Falls back to the timestamp alone if git isn't available (it isn't, inside
+ * some CI images).
+ */
+const buildStamp = (): string => {
+  const when = new Date().toISOString().slice(5, 16).replace('T', ' ')
+  try {
+    const sha = execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] })
+      .toString()
+      .trim()
+    return `${when} · ${sha}`
+  } catch {
+    return when
+  }
+}
+
 export default defineConfig({
   base: BASE,
+  define: {
+    __BUILD_STAMP__: JSON.stringify(buildStamp()),
+  },
   plugins: [
     react(),
     VitePWA({

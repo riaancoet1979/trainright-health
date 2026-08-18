@@ -102,10 +102,19 @@ function App() {
       {/* Reminders scheduler running in background */}
       {/* Header */}
       <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 sticky top-0 z-10">
-        <div className="max-w-4xl mx-auto px-4 py-4">
+        <div className="max-w-4xl mx-auto px-4 py-4 flex items-baseline justify-between gap-2">
           <h1 className="text-2xl font-bold text-primary-600 dark:text-primary-400">
             TrainRight Health
           </h1>
+          {/* Build stamp: the only reliable way to tell whether a device has
+              actually picked up the latest deploy, given how hard the iOS
+              home-screen PWA caches. */}
+          <span
+            title="Build currently running on this device"
+            className="shrink-0 rounded bg-emerald-100 dark:bg-emerald-900/40 px-2 py-0.5 font-mono text-[10px] leading-4 text-emerald-800 dark:text-emerald-300"
+          >
+            {__BUILD_STAMP__}
+          </span>
         </div>
       </header>
 

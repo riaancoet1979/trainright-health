@@ -1,5 +1,11 @@
 // Minimal config exported as plain object to avoid importing 'vitest/config'
 export default {
+  // vite.config.ts injects __BUILD_STAMP__ via `define`, but this file is a
+  // separate config and does not inherit it — without this, any component
+  // rendering the build stamp throws ReferenceError under test.
+  define: {
+    __BUILD_STAMP__: JSON.stringify('test-build'),
+  },
   test: {
     // Use jsdom so DOM-based component tests can run normally
     environment: 'jsdom',
