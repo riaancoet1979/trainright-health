@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback, useRef } from 'react';
+import type { ReactNode } from 'react';
 import { format, parseISO, differenceInDays } from 'date-fns';
 import { Trash2, Edit3, Scale, TrendingDown, TrendingUp, Minus, ChevronDown, ChevronRight, Download } from 'lucide-react';
 import {
@@ -9,7 +10,13 @@ import {
 } from '../utils/storage';
 import { KNOWN_INBODY_SCANS } from '../data/inbodyScans';
 import { addBodyMetric } from '../utils/training';
-import type { BodyStatEntry, SegmentalMeasurement } from '../types';
+import type {
+  BodyStatEntry,
+  BodyStatSource,
+  SegmentalClassification,
+  SegmentalMeasurement,
+  SegmentalRegion,
+} from '../types';
 import { useConfirm, useToast } from './ui';
 
 // ─── Tiny inline SVG line-chart ───────────────────────────────────────────────
@@ -197,8 +204,16 @@ const TrendBadge = ({ first, last, unit }: { first: number; last: number; unit: 
 
 const EMPTY_FORM = {
   date: format(new Date(), 'yyyy-MM-dd'),
+  /** 'HH:mm' the scan was taken — becomes the time half of `measuredAt`. */
+  measuredTime: '',
+  /** Free-text device label, e.g. "InBody 270". Drives the inferred source. */
+  sourceDevice: '',
+
+  // Primary
   weight: '',
   bodyFat: '',
+
+  // Tape measurements (cm)
   waist: '',
   chest: '',
   hips: '',
@@ -208,10 +223,203 @@ const EMPTY_FORM = {
   thighL: '',
   thighR: '',
   shoulderWidth: '',
+
+  // Body composition — the InBody "Body Composition Analysis" block
+  skeletalMuscleMassKg: '',
+  bodyFatMassKg: '',
+  fatFreeMassKg: '',
+  totalBodyWaterL: '',
+  proteinMassKg: '',
+  mineralMassKg: '',
+  bmi: '',
+  smiKgM2: '',
+  inBodyScore: '',
+
+  // Metabolic / device estimates
+  basalMetabolicRateKcal: '',
+  recommendedCalorieIntakeKcal: '',
+  waistHipRatio: '',
+  visceralFatLevel: '',
+  obesityDegreePercent: '',
+
+  // Device weight-control suggestion
+  targetWeightKg: '',
+  weightControlKg: '',
+  fatControlKg: '',
+  muscleControlKg: '',
+
   notes: '',
 };
 
 type FormState = typeof EMPTY_FORM;
+
+/**
+ * Form keys that map 1:1 onto a numeric `BodyStatEntry` field. Save and edit
+ * both walk this list, so adding a new metric means adding it here and to
+ * `EMPTY_FORM` — no extra plumbing in the handlers.
+ */
+const NUMERIC_FIELDS = [
+  'weight', 'bodyFat',
+  'waist', 'chest', 'hips', 'leftArm', 'rightArm', 'neck',
+  'thighL', 'thighR', 'shoulderWidth',
+  'skeletalMuscleMassKg', 'bodyFatMassKg', 'fatFreeMassKg', 'totalBodyWaterL',
+  'proteinMassKg', 'mineralMassKg', 'bmi', 'smiKgM2', 'inBodyScore',
+  'basalMetabolicRateKcal', 'recommendedCalorieIntakeKcal', 'waistHipRatio',
+  'visceralFatLevel', 'obesityDegreePercent',
+  'targetWeightKg', 'weightControlKg', 'fatControlKg', 'muscleControlKg',
+] as const;
+
+type NumericField = (typeof NUMERIC_FIELDS)[number];
+
+/** Fields that make an entry a body-composition scan rather than a scale-and-
+ *  tape weigh-in. Used to infer `source` when a scan is typed in by hand. */
+const RICH_FIELDS: NumericField[] = [
+  'skeletalMuscleMassKg', 'bodyFatMassKg', 'fatFreeMassKg', 'totalBodyWaterL',
+  'proteinMassKg', 'mineralMassKg', 'smiKgM2', 'inBodyScore',
+  'basalMetabolicRateKcal', 'recommendedCalorieIntakeKcal',
+  'visceralFatLevel', 'obesityDegreePercent',
+  'targetWeightKg', 'weightControlKg', 'fatControlKg', 'muscleControlKg',
+];
+
+interface FieldSpec {
+  key: NumericField;
+  label: string;
+  unit?: string;
+  step?: string;
+  placeholder?: string;
+  /** Control values print as -2,8 kg on the sheet, so they must accept a minus. */
+  allowNegative?: boolean;
+}
+
+const COMPOSITION_FIELDS: FieldSpec[] = [
+  { key: 'skeletalMuscleMassKg', label: 'Skeletal Muscle Mass',  unit: 'kg',    placeholder: 'e.g. 42.3' },
+  { key: 'bodyFatMassKg',        label: 'Body Fat Mass',         unit: 'kg',    placeholder: 'e.g. 15.9' },
+  { key: 'fatFreeMassKg',        label: 'Fat-Free Mass',         unit: 'kg',    placeholder: 'e.g. 74.1' },
+  { key: 'totalBodyWaterL',      label: 'Total Body Water',      unit: 'L',     placeholder: 'e.g. 54.3' },
+  { key: 'proteinMassKg',        label: 'Protein',               unit: 'kg',    placeholder: 'e.g. 14.7' },
+  { key: 'mineralMassKg',        label: 'Minerals',              unit: 'kg',    step: '0.01', placeholder: 'e.g. 5.09' },
+  { key: 'bmi',                  label: 'BMI',                                  placeholder: 'e.g. 28.4' },
+  { key: 'smiKgM2',              label: 'Skeletal Muscle Index', unit: 'kg/m2', placeholder: 'e.g. 9.4' },
+  { key: 'inBodyScore',          label: 'InBody Score',          unit: '/100',  step: '1', placeholder: 'e.g. 92' },
+];
+
+const METABOLIC_FIELDS: FieldSpec[] = [
+  { key: 'basalMetabolicRateKcal',       label: 'BMR',                unit: 'kcal/day', step: '1',    placeholder: 'e.g. 1971' },
+  { key: 'recommendedCalorieIntakeKcal', label: 'Recommended Intake', unit: 'kcal/day', step: '1',    placeholder: 'e.g. 2879' },
+  { key: 'waistHipRatio',                label: 'Waist-Hip Ratio',                      step: '0.01', placeholder: 'e.g. 0.92' },
+  { key: 'visceralFatLevel',             label: 'Visceral Fat Level',                   step: '1',    placeholder: 'e.g. 7' },
+  { key: 'obesityDegreePercent',         label: 'Obesity Degree',     unit: '%',        step: '1',    placeholder: 'e.g. 129' },
+];
+
+const SUGGESTION_FIELDS: FieldSpec[] = [
+  { key: 'targetWeightKg',  label: 'Target Weight',  unit: 'kg', placeholder: 'e.g. 87.2' },
+  { key: 'weightControlKg', label: 'Weight Control', unit: 'kg', placeholder: 'e.g. -2.8', allowNegative: true },
+  { key: 'fatControlKg',    label: 'Fat Control',    unit: 'kg', placeholder: 'e.g. -2.8', allowNegative: true },
+  { key: 'muscleControlKg', label: 'Muscle Control', unit: 'kg', placeholder: 'e.g. 0',    allowNegative: true },
+];
+
+// ─── Segmental sub-form ───────────────────────────────────────────────────────
+
+const SEG_REGIONS: SegmentalRegion[] = ['leftArm', 'rightArm', 'trunk', 'leftLeg', 'rightLeg'];
+const SEG_CLASSES: SegmentalClassification[] = ['Under', 'Low', 'Normal', 'Over', 'High'];
+
+interface SegFormRow { massKg: string; refPercent: string; classification: string }
+type SegState = Record<SegmentalRegion, SegFormRow>;
+
+const emptySegRow = (): SegFormRow => ({ massKg: '', refPercent: '', classification: '' });
+
+const emptySegState = (): SegState => ({
+  leftArm:  emptySegRow(),
+  rightArm: emptySegRow(),
+  trunk:    emptySegRow(),
+  leftLeg:  emptySegRow(),
+  rightLeg: emptySegRow(),
+});
+
+const segStateFrom = (items?: SegmentalMeasurement[]): SegState => {
+  const state = emptySegState();
+  for (const item of items ?? []) {
+    if (!state[item.region]) continue;
+    state[item.region] = {
+      massKg: String(item.massKg),
+      refPercent: item.refPercent !== undefined ? String(item.refPercent) : '',
+      classification: item.classification ?? '',
+    };
+  }
+  return state;
+};
+
+const toNumber = (raw: string): number | undefined => {
+  const trimmed = raw.trim();
+  if (trimmed === '') return undefined;
+  const parsed = parseFloat(trimmed);
+  return Number.isFinite(parsed) ? parsed : undefined;
+};
+
+/** Regions with no mass are dropped — blank means "not recorded", not zero. */
+const segArrayFrom = (state: SegState): SegmentalMeasurement[] =>
+  SEG_REGIONS.flatMap(region => {
+    const row = state[region];
+    const massKg = toNumber(row.massKg);
+    if (massKg === undefined) return [];
+    const refPercent = toNumber(row.refPercent);
+    return [{
+      region,
+      massKg,
+      ...(refPercent !== undefined && { refPercent }),
+      ...(row.classification !== '' && { classification: row.classification as SegmentalClassification }),
+    }];
+  });
+
+/** Map the free-text device label onto the stored `source` enum. */
+const inferSource = (label: string): BodyStatSource => {
+  const l = label.trim().toLowerCase();
+  if (l === '') return 'inbody-270';
+  if (l.includes('inbody')) return l.includes('270') ? 'inbody-270' : 'inbody-other';
+  return 'scale';
+};
+
+type SectionKey = 'composition' | 'metabolic' | 'suggestion' | 'segmental';
+
+const ALL_SECTIONS_CLOSED: Record<SectionKey, boolean> = {
+  composition: false, metabolic: false, suggestion: false, segmental: false,
+};
+
+/** Collapsible group inside the entry form. Keeps the everyday weigh-in fields
+ *  at the top while the full scan sheet stays one tap away. */
+const FormSection = ({ title, hint, open, onToggle, filled, children }: {
+  title: string;
+  hint?: string;
+  open: boolean;
+  onToggle: () => void;
+  filled: number;
+  children: ReactNode;
+}) => (
+  <div className="rounded-lg border border-gray-200 dark:border-gray-700">
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-expanded={open}
+      className="w-full flex items-center justify-between gap-2 px-3 py-2 text-left"
+    >
+      <span className="text-sm font-medium flex items-center gap-2">
+        {open ? <ChevronDown className="w-4 h-4 text-gray-400" /> : <ChevronRight className="w-4 h-4 text-gray-400" />}
+        {title}
+      </span>
+      {filled > 0 && (
+        <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300">
+          {filled} filled
+        </span>
+      )}
+    </button>
+    {open && (
+      <div className="px-3 pb-3 space-y-3">
+        {hint && <p className="text-xs text-gray-500 dark:text-gray-400">{hint}</p>}
+        {children}
+      </div>
+    )}
+  </div>
+);
 
 const BodyStats = () => {
   const { confirm } = useConfirm();
@@ -226,13 +434,36 @@ const BodyStats = () => {
   const [showForm, setShowForm] = useState(false);
   const [prefilled, setPrefilled] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [segLean, setSegLean] = useState<SegState>(emptySegState);
+  const [segFat, setSegFat] = useState<SegState>(emptySegState);
+  const [openSections, setOpenSections] = useState<Record<SectionKey, boolean>>(ALL_SECTIONS_CLOSED);
   const chartsRef = useRef<HTMLDivElement>(null);
 
   const setField = (key: keyof FormState, value: string) =>
     setForm(f => ({ ...f, [key]: value }));
 
+  const setSeg = (kind: 'lean' | 'fat', region: SegmentalRegion, key: keyof SegFormRow, value: string) => {
+    const setter = kind === 'lean' ? setSegLean : setSegFat;
+    setter(prev => ({ ...prev, [region]: { ...prev[region], [key]: value } }));
+  };
+
+  const toggleSection = (key: SectionKey) =>
+    setOpenSections(prev => ({ ...prev, [key]: !prev[key] }));
+
+  /** How many inputs in a group carry a value — shown as a badge on the
+   *  collapsed section header so nothing filled in stays hidden. */
+  const countFilled = (specs: FieldSpec[]) =>
+    specs.filter(spec => form[spec.key].trim() !== '').length;
+
+  const segFilledCount = SEG_REGIONS.filter(
+    r => segLean[r].massKg.trim() !== '' || segFat[r].massKg.trim() !== '',
+  ).length;
+
   const resetForm = () => {
-    setForm(EMPTY_FORM);
+    setForm({ ...EMPTY_FORM, date: format(new Date(), 'yyyy-MM-dd') });
+    setSegLean(emptySegState());
+    setSegFat(emptySegState());
+    setOpenSections(ALL_SECTIONS_CLOSED);
     setEditingId(null);
     setShowForm(false);
     setPrefilled(false);
@@ -261,11 +492,10 @@ const BodyStats = () => {
       return v !== undefined ? String(v) : '';
     };
     setForm({
+      ...EMPTY_FORM,
       date: today,
-      // Weight + body-fat change every weigh-in — leave blank to force fresh input.
-      weight: '',
-      bodyFat: '',
-      // Tape measurements change slowly — pre-fill from last recorded value.
+      // Weight, body fat and every scan-derived number change at each weigh-in,
+      // so they stay blank. Tape measurements move slowly — pre-fill those.
       waist:         fromLast('waist'),
       chest:         fromLast('chest'),
       hips:          fromLast('hips'),
@@ -275,8 +505,10 @@ const BodyStats = () => {
       thighL:        fromLast('thighL'),
       thighR:        fromLast('thighR'),
       shoulderWidth: fromLast('shoulderWidth'),
-      notes: '',
     });
+    setSegLean(emptySegState());
+    setSegFat(emptySegState());
+    setOpenSections(ALL_SECTIONS_CLOSED);
     setEditingId(null);
     setShowForm(true);
     setPrefilled(entries.length > 0);
@@ -284,28 +516,64 @@ const BodyStats = () => {
 
   const clearForm = () => {
     setForm({ ...EMPTY_FORM, date: form.date });
+    setSegLean(emptySegState());
+    setSegFat(emptySegState());
     setPrefilled(false);
   };
 
   const handleSave = () => {
     const id = editingId ?? `body-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const entry: BodyStatEntry = {
-      id,
-      date: form.date,
-      ...(form.weight !== '' && { weight: parseFloat(form.weight) }),
-      ...(form.bodyFat !== '' && { bodyFat: parseFloat(form.bodyFat) }),
-      ...(form.waist !== '' && { waist: parseFloat(form.waist) }),
-      ...(form.chest !== '' && { chest: parseFloat(form.chest) }),
-      ...(form.hips !== '' && { hips: parseFloat(form.hips) }),
-      ...(form.leftArm !== '' && { leftArm: parseFloat(form.leftArm) }),
-      ...(form.rightArm !== '' && { rightArm: parseFloat(form.rightArm) }),
-      ...(form.neck !== '' && { neck: parseFloat(form.neck) }),
-      ...(form.thighL !== '' && { thighL: parseFloat(form.thighL) }),
-      ...(form.thighR !== '' && { thighR: parseFloat(form.thighR) }),
-      ...(form.shoulderWidth !== '' && { shoulderWidth: parseFloat(form.shoulderWidth) }),
-      ...(form.notes.trim() !== '' && { notes: form.notes.trim() }),
-    };
+    // Start from the stored entry when editing so fields the form does not
+    // expose (import fingerprint, review flags) survive a manual edit.
+    const existing = editingId ? entries.find(en => en.id === editingId) : undefined;
+    const entry: BodyStatEntry = { ...(existing ?? {}), id, date: form.date };
+    const record = entry as unknown as Record<string, unknown>;
+
+    // A blank input clears the stored value rather than silently keeping the old one.
+    for (const key of NUMERIC_FIELDS) {
+      const value = toNumber(form[key]);
+      if (value === undefined) delete record[key];
+      else record[key] = value;
+    }
+
+    if (form.notes.trim() !== '') entry.notes = form.notes.trim();
+    else delete entry.notes;
+
+    const lean = segArrayFrom(segLean);
+    const fat = segArrayFrom(segFat);
+    if (lean.length > 0) entry.segmentalLean = lean;
+    else delete entry.segmentalLean;
+    if (fat.length > 0) entry.segmentalFat = fat;
+    else delete entry.segmentalFat;
+
+    // The score is meaningless without its scale, and vice versa.
+    if (entry.inBodyScore !== undefined) entry.inBodyScoreMax = entry.inBodyScoreMax ?? 100;
+    else delete entry.inBodyScoreMax;
+
+    const device = form.sourceDevice.trim();
+    if (device !== '') entry.sourceDevice = device;
+    else delete entry.sourceDevice;
+
+    if (form.measuredTime !== '') entry.measuredAt = `${form.date}T${form.measuredTime}:00`;
+    else delete entry.measuredAt;
+
+    const isScan = RICH_FIELDS.some(key => record[key] !== undefined)
+      || lean.length > 0
+      || fat.length > 0;
+    if (isScan) {
+      // Never downgrade an imported scan's provenance — only fill it in.
+      if (!entry.source || entry.source === 'manual') entry.source = inferSource(device);
+      entry.importedAt = entry.importedAt ?? new Date().toISOString();
+    } else if (!existing?.source) {
+      entry.source = 'manual';
+    }
+
     saveBodyStatEntry(entry);
+    // Mirror into the training store so Analytics and the weekly review read
+    // the same numbers a hand-typed scan produced. addBodyMetric dedupes by date.
+    if (entry.weight !== undefined) {
+      addBodyMetric({ date: entry.date, weight: entry.weight, bfp: entry.bodyFat });
+    }
     resetForm();
     bump();
     // Scroll to charts so user sees their progress immediately
@@ -313,20 +581,28 @@ const BodyStats = () => {
   };
 
   const handleEdit = (e: BodyStatEntry) => {
-    setForm({
-      date: e.date,
-      weight: e.weight !== undefined ? String(e.weight) : '',
-      bodyFat: e.bodyFat !== undefined ? String(e.bodyFat) : '',
-      waist: e.waist !== undefined ? String(e.waist) : '',
-      chest: e.chest !== undefined ? String(e.chest) : '',
-      hips: e.hips !== undefined ? String(e.hips) : '',
-      leftArm: e.leftArm !== undefined ? String(e.leftArm) : '',
-      rightArm: e.rightArm !== undefined ? String(e.rightArm) : '',
-      neck: e.neck !== undefined ? String(e.neck) : '',
-      thighL: e.thighL !== undefined ? String(e.thighL) : '',
-      thighR: e.thighR !== undefined ? String(e.thighR) : '',
-      shoulderWidth: e.shoulderWidth !== undefined ? String(e.shoulderWidth) : '',
-      notes: e.notes ?? '',
+    const record = e as unknown as Record<string, unknown>;
+    const next: Record<string, string> = { ...EMPTY_FORM, date: e.date };
+    for (const key of NUMERIC_FIELDS) {
+      const value = record[key];
+      next[key] = typeof value === 'number' ? String(value) : '';
+    }
+    next.notes = e.notes ?? '';
+    next.sourceDevice = e.sourceDevice ?? '';
+    // measuredAt is 'YYYY-MM-DDTHH:mm[:ss]' — pull the HH:mm for the time input.
+    next.measuredTime = e.measuredAt && e.measuredAt.includes('T')
+      ? e.measuredAt.slice(11, 16)
+      : '';
+    setForm(next as FormState);
+    setSegLean(segStateFrom(e.segmentalLean));
+    setSegFat(segStateFrom(e.segmentalFat));
+    // Open only the groups that already hold data, so an edit shows everything
+    // recorded without burying it behind a collapsed header.
+    setOpenSections({
+      composition: COMPOSITION_FIELDS.some(spec => record[spec.key] !== undefined),
+      metabolic:   METABOLIC_FIELDS.some(spec => record[spec.key] !== undefined),
+      suggestion:  SUGGESTION_FIELDS.some(spec => record[spec.key] !== undefined),
+      segmental:   (e.segmentalLean?.length ?? 0) > 0 || (e.segmentalFat?.length ?? 0) > 0,
     });
     setEditingId(e.id);
     setShowForm(true);
@@ -412,6 +688,29 @@ const BodyStats = () => {
   const visceralFatPoints     = mkPoints('visceralFatLevel');
   const bmiPoints             = mkPoints('bmi');
 
+  /** Two-column grid of numeric inputs driven by a FieldSpec list. */
+  const numberGrid = (specs: FieldSpec[]) => (
+    <div className="grid grid-cols-2 gap-3">
+      {specs.map(spec => (
+        <div key={spec.key}>
+          <label htmlFor={`bs-${spec.key}`} className="block text-sm font-medium mb-1">
+            {spec.label}{spec.unit ? ` (${spec.unit})` : ''}
+          </label>
+          <input
+            id={`bs-${spec.key}`}
+            type="number"
+            step={spec.step ?? '0.1'}
+            {...(spec.allowNegative ? {} : { min: '0' })}
+            placeholder={spec.placeholder}
+            value={form[spec.key]}
+            onChange={e => setField(spec.key, e.target.value)}
+            className="input-field"
+          />
+        </div>
+      ))}
+    </div>
+  );
+
   // Latest entry for summary card
   const latest = entries.length > 0 ? entries[entries.length - 1] : null;
   const first = entries.length > 1 ? entries[0] : null;
@@ -428,7 +727,7 @@ const BodyStats = () => {
             <button
               onClick={handleImportInBody}
               className="btn-secondary px-3 py-2 text-xs flex items-center gap-1"
-              title="Import InBody 270 scans (26 May & 3 Jul 2026)"
+              title="Import InBody 270 scans (26 May, 3 Jul & 6 Aug 2026)"
             >
               <Download className="w-3 h-3" />
               <span className="hidden sm:inline">Import InBody scans</span>
@@ -510,23 +809,33 @@ const BodyStats = () => {
             </p>
           )}
 
-          <div>
-            <label className="block text-sm font-medium mb-1">Date</label>
-            <input type="date" value={form.date}
-              onChange={e => setField('date', e.target.value)}
-              className="input-field" />
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label htmlFor="bs-date" className="block text-sm font-medium mb-1">Date</label>
+              <input id="bs-date" type="date" value={form.date}
+                onChange={e => setField('date', e.target.value)}
+                className="input-field" />
+            </div>
+            <div>
+              <label htmlFor="bs-measuredTime" className="block text-sm font-medium mb-1">
+                Time measured <span className="text-gray-400 font-normal">(optional)</span>
+              </label>
+              <input id="bs-measuredTime" type="time" value={form.measuredTime}
+                onChange={e => setField('measuredTime', e.target.value)}
+                className="input-field" />
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-medium mb-1">Weight (kg)</label>
-              <input type="number" step="0.1" min="0" placeholder="e.g. 82.5"
+              <label htmlFor="bs-weight" className="block text-sm font-medium mb-1">Weight (kg)</label>
+              <input id="bs-weight" type="number" step="0.1" min="0" placeholder="e.g. 82.5"
                 value={form.weight} onChange={e => setField('weight', e.target.value)}
                 className="input-field" />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Body Fat (%)</label>
-              <input type="number" step="0.1" min="0" max="60" placeholder="e.g. 18.5"
+              <label htmlFor="bs-bodyFat" className="block text-sm font-medium mb-1">Body Fat (%)</label>
+              <input id="bs-bodyFat" type="number" step="0.1" min="0" max="60" placeholder="e.g. 18.5"
                 value={form.bodyFat} onChange={e => setField('bodyFat', e.target.value)}
                 className="input-field" />
             </div>
@@ -536,59 +845,171 @@ const BodyStats = () => {
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-medium mb-1">Waist</label>
-              <input type="number" step="0.5" min="0" placeholder="cm"
+              <label htmlFor="bs-waist" className="block text-sm font-medium mb-1">Waist</label>
+              <input id="bs-waist" type="number" step="0.5" min="0" placeholder="cm"
                 value={form.waist} onChange={e => setField('waist', e.target.value)}
                 className="input-field" />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Chest</label>
-              <input type="number" step="0.5" min="0" placeholder="cm"
+              <label htmlFor="bs-chest" className="block text-sm font-medium mb-1">Chest</label>
+              <input id="bs-chest" type="number" step="0.5" min="0" placeholder="cm"
                 value={form.chest} onChange={e => setField('chest', e.target.value)}
                 className="input-field" />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Hips</label>
-              <input type="number" step="0.5" min="0" placeholder="cm"
+              <label htmlFor="bs-hips" className="block text-sm font-medium mb-1">Hips</label>
+              <input id="bs-hips" type="number" step="0.5" min="0" placeholder="cm"
                 value={form.hips} onChange={e => setField('hips', e.target.value)}
                 className="input-field" />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Neck</label>
-              <input type="number" step="0.5" min="0" placeholder="cm"
+              <label htmlFor="bs-neck" className="block text-sm font-medium mb-1">Neck</label>
+              <input id="bs-neck" type="number" step="0.5" min="0" placeholder="cm"
                 value={form.neck} onChange={e => setField('neck', e.target.value)}
                 className="input-field" />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Left Arm</label>
-              <input type="number" step="0.5" min="0" placeholder="cm"
+              <label htmlFor="bs-leftArm" className="block text-sm font-medium mb-1">Left Arm</label>
+              <input id="bs-leftArm" type="number" step="0.5" min="0" placeholder="cm"
                 value={form.leftArm} onChange={e => setField('leftArm', e.target.value)}
                 className="input-field" />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Right Arm</label>
-              <input type="number" step="0.5" min="0" placeholder="cm"
+              <label htmlFor="bs-rightArm" className="block text-sm font-medium mb-1">Right Arm</label>
+              <input id="bs-rightArm" type="number" step="0.5" min="0" placeholder="cm"
                 value={form.rightArm} onChange={e => setField('rightArm', e.target.value)}
                 className="input-field" />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Left Thigh</label>
-              <input type="number" step="0.5" min="0" placeholder="cm"
+              <label htmlFor="bs-thighL" className="block text-sm font-medium mb-1">Left Thigh</label>
+              <input id="bs-thighL" type="number" step="0.5" min="0" placeholder="cm"
                 value={form.thighL} onChange={e => setField('thighL', e.target.value)}
                 className="input-field" />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Right Thigh</label>
-              <input type="number" step="0.5" min="0" placeholder="cm"
+              <label htmlFor="bs-thighR" className="block text-sm font-medium mb-1">Right Thigh</label>
+              <input id="bs-thighR" type="number" step="0.5" min="0" placeholder="cm"
                 value={form.thighR} onChange={e => setField('thighR', e.target.value)}
                 className="input-field" />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Shoulder Width</label>
-              <input type="number" step="0.5" min="0" placeholder="cm"
+              <label htmlFor="bs-shoulderWidth" className="block text-sm font-medium mb-1">Shoulder Width</label>
+              <input id="bs-shoulderWidth" type="number" step="0.5" min="0" placeholder="cm"
                 value={form.shoulderWidth} onChange={e => setField('shoulderWidth', e.target.value)}
                 className="input-field" />
             </div>
+          </div>
+
+          {/* ── Full body-composition sheet ──
+              Every value an InBody 270 printout carries. Collapsed by default so
+              a plain weigh-in stays two fields, but a scan can be typed in full
+              without waiting for a hard-coded import. */}
+          <div className="space-y-2">
+            <p className="text-xs text-gray-500 dark:text-gray-400 font-medium uppercase tracking-wide">
+              Body scan (InBody / smart scale)
+            </p>
+
+            <FormSection
+              title="Body Composition"
+              hint="From the InBody sheet: muscle, fat and water masses plus BMI and score."
+              open={openSections.composition}
+              onToggle={() => toggleSection('composition')}
+              filled={countFilled(COMPOSITION_FIELDS) + (form.sourceDevice.trim() !== '' ? 1 : 0)}
+            >
+              <div>
+                <label htmlFor="bs-sourceDevice" className="block text-sm font-medium mb-1">
+                  Device <span className="text-gray-400 font-normal">(optional)</span>
+                </label>
+                <input id="bs-sourceDevice" type="text" placeholder="e.g. InBody 270"
+                  value={form.sourceDevice} onChange={e => setField('sourceDevice', e.target.value)}
+                  className="input-field" />
+              </div>
+              {numberGrid(COMPOSITION_FIELDS)}
+            </FormSection>
+
+            <FormSection
+              title="Metabolic Estimates"
+              hint="Device estimates — not medical advice."
+              open={openSections.metabolic}
+              onToggle={() => toggleSection('metabolic')}
+              filled={countFilled(METABOLIC_FIELDS)}
+            >
+              {numberGrid(METABOLIC_FIELDS)}
+            </FormSection>
+
+            <FormSection
+              title="Device Suggestion"
+              hint="What the machine recommends. Stored for reference — it never becomes an app target."
+              open={openSections.suggestion}
+              onToggle={() => toggleSection('suggestion')}
+              filled={countFilled(SUGGESTION_FIELDS)}
+            >
+              {numberGrid(SUGGESTION_FIELDS)}
+            </FormSection>
+
+            <FormSection
+              title="Segmental Analysis"
+              hint="Lean and fat mass per limb. Leave a region blank if the sheet does not show it."
+              open={openSections.segmental}
+              onToggle={() => toggleSection('segmental')}
+              filled={segFilledCount}
+            >
+              {SEG_REGIONS.map(region => (
+                <div key={region} className="rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 p-2">
+                  <div className="text-xs font-semibold mb-2 text-gray-700 dark:text-gray-200">
+                    {REGION_LABEL[region]}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label htmlFor={`bs-lean-mass-${region}`} className="block text-[11px] text-gray-500 dark:text-gray-400 mb-1">Lean (kg)</label>
+                      <input id={`bs-lean-mass-${region}`} type="number" step="0.01" min="0" placeholder="kg"
+                        value={segLean[region].massKg}
+                        onChange={e => setSeg('lean', region, 'massKg', e.target.value)}
+                        className="input-field" />
+                    </div>
+                    <div>
+                      <label htmlFor={`bs-lean-ref-${region}`} className="block text-[11px] text-gray-500 dark:text-gray-400 mb-1">Lean (% ref)</label>
+                      <input id={`bs-lean-ref-${region}`} type="number" step="0.1" min="0" placeholder="%"
+                        value={segLean[region].refPercent}
+                        onChange={e => setSeg('lean', region, 'refPercent', e.target.value)}
+                        className="input-field" />
+                    </div>
+                    <div>
+                      <label htmlFor={`bs-fat-mass-${region}`} className="block text-[11px] text-gray-500 dark:text-gray-400 mb-1">Fat (kg)</label>
+                      <input id={`bs-fat-mass-${region}`} type="number" step="0.01" min="0" placeholder="kg"
+                        value={segFat[region].massKg}
+                        onChange={e => setSeg('fat', region, 'massKg', e.target.value)}
+                        className="input-field" />
+                    </div>
+                    <div>
+                      <label htmlFor={`bs-fat-ref-${region}`} className="block text-[11px] text-gray-500 dark:text-gray-400 mb-1">Fat (% ref)</label>
+                      <input id={`bs-fat-ref-${region}`} type="number" step="0.1" min="0" placeholder="%"
+                        value={segFat[region].refPercent}
+                        onChange={e => setSeg('fat', region, 'refPercent', e.target.value)}
+                        className="input-field" />
+                    </div>
+                    <div>
+                      <label htmlFor={`bs-lean-class-${region}`} className="block text-[11px] text-gray-500 dark:text-gray-400 mb-1">Lean label</label>
+                      <select id={`bs-lean-class-${region}`} value={segLean[region].classification}
+                        onChange={e => setSeg('lean', region, 'classification', e.target.value)}
+                        className="input-field">
+                        <option value="">—</option>
+                        {SEG_CLASSES.map(c => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label htmlFor={`bs-fat-class-${region}`} className="block text-[11px] text-gray-500 dark:text-gray-400 mb-1">Fat label</label>
+                      <select id={`bs-fat-class-${region}`} value={segFat[region].classification}
+                        onChange={e => setSeg('fat', region, 'classification', e.target.value)}
+                        className="input-field">
+                        <option value="">—</option>
+                        {SEG_CLASSES.map(c => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </FormSection>
           </div>
 
           <div>
