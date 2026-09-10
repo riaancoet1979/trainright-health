@@ -2,7 +2,11 @@ import { format } from 'date-fns';
 import { Trash2, Activity } from 'lucide-react';
 import type { DailyEntry, FoodItem } from '../types';
 import { deleteFoodEntry, deleteExercise, addFoodEntry } from '../utils/storage';
-import { getTargetsForDate, isTrainingDay } from '../utils/training';
+import {
+  getTargetsForDate, isTrainingDay, getDayTypeForDate, isDayTypeOverridden,
+  setDayTypeOverride,
+} from '../utils/training';
+import type { DayType } from '../types/training';
 import SmartSuggestions from './SmartSuggestions';
 
 interface DailySummaryProps {
@@ -13,7 +17,16 @@ interface DailySummaryProps {
 
 const DailySummary = ({ selectedDate, dailyEntry, onUpdate }: DailySummaryProps) => {
   const targets = getTargetsForDate(selectedDate);
-  const trainingDay = isTrainingDay(selectedDate);
+  const dayType = getDayTypeForDate(selectedDate);
+  const overridden = isDayTypeOverridden(selectedDate);
+  const scheduledType: DayType = isTrainingDay(selectedDate) ? 'training' : 'rest';
+
+  /** Tapping the type the schedule already implies clears the override rather
+   *  than pinning it, so the day snaps back to following the plan. */
+  const chooseDayType = (t: DayType) => {
+    setDayTypeOverride(selectedDate, t === scheduledType ? null : t);
+    onUpdate();
+  };
 
   const handleDeleteFood = (entryId: string) => {
     deleteFoodEntry(selectedDate, entryId);
@@ -105,11 +118,52 @@ const DailySummary = ({ selectedDate, dailyEntry, onUpdate }: DailySummaryProps)
 
       {/* Progress Bars */}
       <div className="card">
-        <h3 className="text-lg font-bold mb-4">Daily Progress
-          <span className={`ml-2 text-xs font-semibold px-2 py-0.5 rounded-full ${trainingDay ? 'bg-primary-100 text-primary-700 dark:bg-primary-900 dark:text-primary-300' : 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300'}`}>
-            {trainingDay ? 'Training day' : 'Rest day'}
-          </span>
-        </h3>
+        <div className="flex items-start justify-between flex-wrap gap-2 mb-4">
+          <h3 className="text-lg font-bold">Daily Progress</h3>
+
+          {/* Day-type picker. The programme schedule sets the default; tapping
+              the other option overrides just this date and the macros follow.
+              Training days and rest days differ by carbohydrate only. */}
+          <div className="text-right">
+            <div
+              className="inline-flex rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden"
+              role="group"
+              aria-label="Day type"
+            >
+              {(['training', 'rest'] as DayType[]).map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => chooseDayType(t)}
+                  aria-pressed={dayType === t}
+                  className={`px-3 py-1 text-xs font-semibold transition-colors ${
+                    dayType === t
+                      ? 'bg-primary-600 text-white'
+                      : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+                  }`}
+                >
+                  {t === 'training' ? 'Training day' : 'Rest day'}
+                </button>
+              ))}
+            </div>
+            <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
+              {overridden ? (
+                <>
+                  Overridden ·{' '}
+                  <button
+                    type="button"
+                    onClick={() => { setDayTypeOverride(selectedDate, null); onUpdate(); }}
+                    className="underline hover:text-gray-700 dark:hover:text-gray-200"
+                  >
+                    follow schedule
+                  </button>
+                </>
+              ) : (
+                'Following the programme schedule'
+              )}
+            </div>
+          </div>
+        </div>
         <div className="space-y-4">
           {/* Calories */}
           <div>
@@ -252,7 +306,7 @@ const DailySummary = ({ selectedDate, dailyEntry, onUpdate }: DailySummaryProps)
                       <div className="font-medium">{entry.foodName}</div>
                       <div className="text-sm text-gray-600 dark:text-gray-400">
                         {entry.isManualMacroEntry || entry.servingType === 'manual' ? (
-                          <>Manual meal totals</>
+                          <>Meal totals</>
                         ) : entry.servingType === 'piece' && entry.pieceCount ? (
                           <>
                             {entry.pieceCount} piece{entry.pieceCount > 1 ? 's' : ''} ({entry.portion}g)

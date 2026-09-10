@@ -31,7 +31,7 @@ describe('dailyInsights', () => {
   });
 
   it('praises protein on target and flags short sleep', () => {
-    logFood('2026-06-15', 2000, 158);
+    logFood('2026-06-15', 2101, 188); // within 15 g of the 190 g target
     mergeGarminData({ source: 'garmin_connect', days: { '2026-06-16': { sleepHours: 5.5 } } });
     const ins = dailyInsights('2026-06-16');
     expect(ins.some((i) => i.level === 'good' && i.text.includes('Protein on point'))).toBe(true);

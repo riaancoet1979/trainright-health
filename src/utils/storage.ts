@@ -44,6 +44,15 @@ const APP_BACKUP_KEYS = [
   STORAGE_KEYS.HEALTH_METRICS,
 ] as const;
 
+const CURRENT_TARGET_PLAN_VERSION = '2026-09-09-recomp-2101';
+
+const CURRENT_DAILY_TARGETS = {
+  dailyCalories: 2101,
+  dailyProtein: 190,
+  dailyCarbs: 180,
+  dailyFats: 69,
+};
+
 type AppBackupKey = typeof APP_BACKUP_KEYS[number];
 type AppBackupImportMode = 'merge' | 'replace';
 
@@ -175,15 +184,21 @@ export const importAppBackup = (
 export const getUserSettings = (): UserSettings => {
   const stored = localStorage.getItem(STORAGE_KEYS.USER_SETTINGS);
   if (stored) {
-    return JSON.parse(stored);
+    const parsed = JSON.parse(stored) as UserSettings;
+    if (parsed.targetPlanVersion !== CURRENT_TARGET_PLAN_VERSION) {
+      const migrated = {
+        ...parsed,
+        targets: CURRENT_DAILY_TARGETS,
+        targetPlanVersion: CURRENT_TARGET_PLAN_VERSION,
+      };
+      persist(STORAGE_KEYS.USER_SETTINGS, migrated);
+      return migrated;
+    }
+    return parsed;
   }
   return {
-    targets: {
-      dailyCalories: 2000,
-      dailyProtein: 150,
-      dailyCarbs: 200,
-      dailyFats: 65,
-    },
+    targets: CURRENT_DAILY_TARGETS,
+    targetPlanVersion: CURRENT_TARGET_PLAN_VERSION,
     theme: 'light',
     pushupReminders: {
       enabled: false,
@@ -452,13 +467,22 @@ export const addManualMealEntry = (
     protein: number;
     carbs: number;
     fats: number;
+    /** What the meal was. Optional; becomes the entry's display name. */
+    description?: string;
   }
 ): void => {
   const safeMealType = macros.mealType;
+  const label = `${safeMealType.charAt(0).toUpperCase()}${safeMealType.slice(1)} totals`;
+  // A description, when given, becomes the visible name — "Chicken, rice and
+  // broccoli" is a far more useful log line than "Lunch totals". The generic
+  // label stays as the fallback, and `isManualMacroEntry` (not the name) is
+  // what marks the entry as a manual one everywhere it matters.
+  const description = macros.description?.trim().slice(0, 200) || undefined;
   const entry: FoodEntry = {
     id: `${Date.now()}-${Math.random()}`,
     foodId: `manual-${safeMealType}-macros`,
-    foodName: `${safeMealType.charAt(0).toUpperCase()}${safeMealType.slice(1)} totals`,
+    foodName: description ?? label,
+    ...(description ? { description } : {}),
     portion: 0,
     calories: Math.max(0, Math.round(macros.calories || 0)),
     protein: Math.max(0, Math.round((macros.protein || 0) * 10) / 10),

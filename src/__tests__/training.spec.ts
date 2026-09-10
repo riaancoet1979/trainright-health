@@ -5,6 +5,7 @@ import {
   getTargetsForDate, TRAINING_KEY,
   getNextRotationDayKey, getSpacingGuards, updateSessionLog,
   DAY_KEY_TO_LETTER, LETTER_TO_DAY_KEY,
+  getDayTypeForDate, isDayTypeOverridden, setDayTypeOverride,
 } from '../utils/training';
 import { PHASES, getPhaseForWeek, DEFAULT_DAY_TYPE_TARGETS } from '../data/program';
 import type { ProgramExercise } from '../types/training';
@@ -359,5 +360,70 @@ describe('TrainRight legacy migration', () => {
     expect(d.logs['2026-05-06']).toBeUndefined();
     expect(d.bodyMetrics.map((m) => m.weight)).toEqual([83.5, 82.9]);
     expect(localStorage.getItem(TRAINING_KEY)).toBeTruthy();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────
+// Manual training / rest day choice
+// ─────────────────────────────────────────────────────────────────
+
+describe('day type and macro targets', () => {
+  beforeEach(() => setProgramStartDate('2026-06-08'));
+
+  it('training and rest differ by carbohydrate only', () => {
+    const { training, rest } = DEFAULT_DAY_TYPE_TARGETS;
+    expect(training.dailyProtein).toBe(rest.dailyProtein);
+    expect(training.dailyFats).toBe(rest.dailyFats);
+    expect(training.dailyCarbs - rest.dailyCarbs).toBe(50);
+  });
+
+  it('the stated calorie totals actually add up from the macros', () => {
+    const kcal = (t: { dailyProtein: number; dailyCarbs: number; dailyFats: number }) =>
+      t.dailyProtein * 4 + t.dailyCarbs * 4 + t.dailyFats * 9;
+    expect(kcal(DEFAULT_DAY_TYPE_TARGETS.training))
+      .toBe(DEFAULT_DAY_TYPE_TARGETS.training.dailyCalories);
+    expect(kcal(DEFAULT_DAY_TYPE_TARGETS.rest))
+      .toBe(DEFAULT_DAY_TYPE_TARGETS.rest.dailyCalories);
+  });
+
+  it('follows the schedule when nothing is overridden', () => {
+    expect(getDayTypeForDate('2026-06-08')).toBe('training'); // Mon — Push
+    expect(getDayTypeForDate('2026-06-11')).toBe('rest');     // Thu — rest
+    expect(isDayTypeOverridden('2026-06-08')).toBe(false);
+  });
+
+  it('a manual rest day on a scheduled training day switches the targets', () => {
+    setDayTypeOverride('2026-06-08', 'rest');
+    expect(getDayTypeForDate('2026-06-08')).toBe('rest');
+    expect(isDayTypeOverridden('2026-06-08')).toBe(true);
+    expect(getTargetsForDate('2026-06-08')).toEqual(DEFAULT_DAY_TYPE_TARGETS.rest);
+  });
+
+  it('a manual training day on a scheduled rest day switches the targets', () => {
+    setDayTypeOverride('2026-06-11', 'training'); // Thu
+    expect(getDayTypeForDate('2026-06-11')).toBe('training');
+    expect(getTargetsForDate('2026-06-11')).toEqual(DEFAULT_DAY_TYPE_TARGETS.training);
+  });
+
+  it('clearing the override returns the date to the schedule', () => {
+    setDayTypeOverride('2026-06-08', 'rest');
+    setDayTypeOverride('2026-06-08', null);
+    expect(getDayTypeForDate('2026-06-08')).toBe('training');
+    expect(isDayTypeOverridden('2026-06-08')).toBe(false);
+  });
+
+  it('the override is per date and does not leak to other days', () => {
+    setDayTypeOverride('2026-06-08', 'rest');
+    expect(getDayTypeForDate('2026-06-09')).toBe('training'); // Tue — Pull
+    expect(isDayTypeOverridden('2026-06-09')).toBe(false);
+  });
+
+  it('the override survives alongside a logged session', () => {
+    updateSessionLog('2026-06-08', (l) => { l.completed = true; l.notes = 'trained anyway'; });
+    setDayTypeOverride('2026-06-08', 'rest');
+    const log = getTrainingData().logs['2026-06-08'];
+    expect(log.completed).toBe(true);
+    expect(log.notes).toBe('trained anyway');
+    expect(log.dayTypeOverride).toBe('rest');
   });
 });

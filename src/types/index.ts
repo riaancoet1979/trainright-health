@@ -26,6 +26,12 @@ export interface FoodEntry {
   pieceCount?: number;
   servingType?: 'weight' | 'piece' | 'manual';
   isManualMacroEntry?: boolean;
+  /**
+   * What the meal actually was, for manual macro entries. The totals alone
+   * say nothing about what produced them, which makes a log impossible to
+   * review weeks later. Free text, optional.
+   */
+  description?: string;
 }
 
 export interface Exercise {

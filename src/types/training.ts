@@ -22,6 +22,9 @@ export type DayKey = SessionKey | LegacyDayKey;
 
 export type Readiness = 'green' | 'yellow' | 'red';
 
+/** Which macro targets a date uses. */
+export type DayType = 'training' | 'rest';
+
 /**
  * Rotation-model session labels. A=Push, B=Pull, C=Legs, D=Upper, E=Lower.
  * The schedule rotates A->B->C->D->E regardless of weekday. Legacy day keys
@@ -151,6 +154,12 @@ export interface SessionLog {
    * schedule".
    */
   dayKeyOverride?: DayKey;
+  /**
+   * Manual training-day / rest-day choice for this DATE, overriding what the
+   * programme schedule implies. Drives which macro targets apply. Undefined
+   * means "follow the schedule" — the normal case.
+   */
+  dayTypeOverride?: DayType;
   weekNum: number;
   phase: number;
   readiness?: Readiness;

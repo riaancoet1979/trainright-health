@@ -43,19 +43,29 @@ export const WARMUP = [
   'Two ramp-up sets on the first lift (50% and 75% of working weight)',
 ];
 
-// ── Nutrition targets ──
-// NOTE: carried over unchanged from the previous 4-day program. A fifth
-// training day shifts weekly energy balance — revisit once the bodyweight
-// trend over 3–4 weeks is visible.
+// ── Nutrition targets (confirmed 2026-09-10) ──
+//
+// Protein and fat are held IDENTICAL across both day types; carbs are the
+// only lever. Protein protects lean mass in a deficit and fat holds hormones
+// steady, so neither is what you cut on an easier day — 50 g of carbs is.
+// That also makes the difference a single number to remember.
+//
+//   Training  190×4 + 180×4 + 69×9 = 760 + 720 + 621 = 2,101 kcal
+//   Rest      190×4 + 130×4 + 69×9 = 760 + 520 + 621 = 1,901 kcal
 export const DEFAULT_DAY_TYPE_TARGETS: DayTypeTargets = {
-  training: { dailyCalories: 2000, dailyProtein: 160, dailyCarbs: 130, dailyFats: 95 },
-  rest: { dailyCalories: 1850, dailyProtein: 160, dailyCarbs: 95, dailyFats: 95 },
+  training: { dailyCalories: 2101, dailyProtein: 190, dailyCarbs: 180, dailyFats: 69 },
+  rest: { dailyCalories: 1901, dailyProtein: 190, dailyCarbs: 130, dailyFats: 69 },
 };
 
-/** Lean-gain targets to switch to when body fat is ~15–16%. */
+/**
+ * Lean-gain targets to switch to when body fat is ~15–16%. Same shape: protein
+ * and fat unchanged from the recomp numbers, carbs carry the surplus.
+ *   Training  190×4 + 255×4 + 69×9 = 2,401 kcal
+ *   Rest      190×4 + 205×4 + 69×9 = 2,201 kcal
+ */
 export const LEAN_GAIN_TARGETS: DayTypeTargets = {
-  training: { dailyCalories: 2350, dailyProtein: 160, dailyCarbs: 215, dailyFats: 95 },
-  rest: { dailyCalories: 2150, dailyProtein: 160, dailyCarbs: 165, dailyFats: 95 },
+  training: { dailyCalories: 2401, dailyProtein: 190, dailyCarbs: 255, dailyFats: 69 },
+  rest: { dailyCalories: 2201, dailyProtein: 190, dailyCarbs: 205, dailyFats: 69 },
 };
 
 /** The five sessions, in the order they are trained. */

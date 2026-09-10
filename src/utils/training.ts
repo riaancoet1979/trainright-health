@@ -8,7 +8,7 @@ import { format } from 'date-fns';
 import { saveBodyStatEntry, getBodyStats } from './storage';
 import type { BodyStatEntry } from '../types';
 import type {
-  TrainingData, SessionLog, DayKey, LegacyDayKey, SessionKey, Readiness, ProgramDay,
+  TrainingData, SessionLog, DayKey, LegacyDayKey, SessionKey, Readiness, DayType, ProgramDay,
   ProgramExercise, MacroTargets, DayTypeTargets, BodyMetric, LoggedSet,
   RedFlagState, SessionLetter,
 } from '../types/training';
@@ -521,10 +521,38 @@ export const saveDayTypeTargets = (t: DayTypeTargets): void => {
   saveUserSettings(s);
 };
 
+/**
+ * The day type actually in force for a date.
+ *
+ * The programme schedule decides by default, but a manual choice on the log
+ * wins — training does not always happen on the day the plan says, and the
+ * macros should follow what you actually did, not what was written down.
+ */
+export const getDayTypeForDate = (date: Date | string): DayType => {
+  const log = getSessionLog(date);
+  if (log?.dayTypeOverride) return log.dayTypeOverride;
+  return isTrainingDay(date) ? 'training' : 'rest';
+};
+
+/** True when the day type came from a manual choice rather than the schedule. */
+export const isDayTypeOverridden = (date: Date | string): boolean =>
+  Boolean(getSessionLog(date)?.dayTypeOverride);
+
+/**
+ * Set (or clear) the manual day type for a date. Passing null clears the
+ * override so the date follows the schedule again.
+ */
+export const setDayTypeOverride = (date: Date | string, type: DayType | null): void => {
+  updateSessionLog(date, (l) => {
+    if (type === null) delete l.dayTypeOverride;
+    else l.dayTypeOverride = type;
+  });
+};
+
 /** Effective macro targets for a date: training-day vs rest-day. */
 export const getTargetsForDate = (date: Date | string): MacroTargets => {
   const t = getDayTypeTargets();
-  return isTrainingDay(date) ? t.training : t.rest;
+  return getDayTypeForDate(date) === 'training' ? t.training : t.rest;
 };
 
 /**

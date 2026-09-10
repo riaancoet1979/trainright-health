@@ -133,16 +133,31 @@ still running the old build resolves rather than breaking the rotation.
 
 ## Nutrition
 
-Unchanged from the previous plan — see `DEFAULT_DAY_TYPE_TARGETS` and
-`LEAN_GAIN_TARGETS` in `src/data/program.ts`.
+**Confirmed 2026-09-10.** Protein and fat are held identical across both day
+types; carbohydrate is the only lever. Protein protects lean mass in a deficit
+and fat holds hormones steady, so neither is what you cut on an easier day —
+50 g of carbs is. It also makes the difference one number to remember.
 
 | Day type | kcal | Protein | Carbs | Fat |
 |---|---|---|---|---|
-| Training (fat loss) | 2,000 | 160 g | 130 g | 95 g |
-| Rest (fat loss) | 1,850 | 160 g | 95 g | 95 g |
-| Training (lean gain) | 2,350 | 160 g | 215 g | 95 g |
-| Rest (lean gain) | 2,150 | 160 g | 165 g | 95 g |
+| **Training** | 2,101 | 190 g | 180 g | 69 g |
+| **Rest** | 1,901 | 190 g | 130 g | 69 g |
 
-**⚠️ These were calibrated for a 4-day week.** A fifth training day shifts
-weekly energy balance and one rest day became a training day. Revisit once
-the bodyweight trend over 3–4 weeks is visible.
+Both totals are exact: 190×4 + 180×4 + 69×9 = 2,101 · 190×4 + 130×4 + 69×9 = 1,901.
+
+**Lean-gain preset** (switch around 15–16% body fat) keeps the same shape, with
+carbs carrying the surplus: training 2,401 (190/255/69), rest 2,201 (190/205/69).
+
+### Choosing the day type
+
+The programme schedule sets the default — the five training days are training
+days, Thursday and Sunday are rest days. The **Daily Progress** card carries a
+Training day / Rest day toggle: tapping the other option overrides that date
+only, and the macro targets follow immediately. A line underneath says whether
+you are following the schedule or have overridden it, with a link back.
+
+Tapping the option the schedule already implies clears the override rather than
+pinning it, so a day always snaps back to the plan.
+
+The choice is stored on that date's session log as `dayTypeOverride` and syncs
+across devices.

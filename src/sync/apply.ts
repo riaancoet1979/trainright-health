@@ -256,6 +256,12 @@ const applyToUserSettings = (store: unknown, change: Change): unknown => {
     ...(f.restTimerSeconds !== undefined ? { restTimerSeconds: f.restTimerSeconds } : {}),
     ...(f.mealSplit !== undefined ? { mealSplit: f.mealSplit } : {}),
     ...(f.staples !== undefined ? { staples: f.staples } : {}),
+    // Carry the target plan stamp and the day-type targets. Omitting
+    // targetPlanVersion left the receiving device without a stamp, so its
+    // next getUserSettings() read replaced the freshly synced macros with the
+    // hardcoded defaults and pushed that back out.
+    ...(f.targetPlanVersion !== undefined ? { targetPlanVersion: f.targetPlanVersion } : {}),
+    ...(f.dayTypeTargets !== undefined ? { dayTypeTargets: f.dayTypeTargets } : {}),
   };
 };
 

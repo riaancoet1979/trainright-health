@@ -172,3 +172,96 @@ describe('shredStore — user settings', () => {
     });
   });
 });
+
+// ─────────────────────────────────────────────────────────────────
+// Fields that must cross devices. These allowlists are the ONLY thing
+// deciding what syncs — a field added to a type but not added here is
+// written locally and silently never leaves the device.
+// ─────────────────────────────────────────────────────────────────
+
+describe('sync field coverage for Garage Block 16', () => {
+  it('carries the per-set RIR', () => {
+    const records = shredStore('health_training_v1', {
+      programStartDate: '2026-06-08',
+      bodyMetrics: [],
+      logs: {
+        '2026-06-08': {
+          dayKey: 'push', weekNum: 1, phase: 1, completed: true, notes: '',
+          exercises: {
+            bb_bench: { sets: [{ weight: '60', reps: '8', rir: '2', done: true }] },
+          },
+        },
+      },
+    });
+    const set = records.find((r) => r.domain === 'set_log');
+    expect(set).toBeDefined();
+    expect(set!.fields.rir).toBe('2');
+  });
+
+  it('carries the per-exercise note', () => {
+    const records = shredStore('health_training_v1', {
+      programStartDate: '2026-06-08',
+      bodyMetrics: [],
+      logs: {
+        '2026-06-08': {
+          dayKey: 'push', weekNum: 1, phase: 1, completed: true, notes: '',
+          exercises: { bb_bench: { sets: [], note: 'left side lagging' } },
+        },
+      },
+    });
+    const ex = records.find((r) => r.domain === 'exercise_log');
+    expect(ex!.fields.note).toBe('left side lagging');
+  });
+
+  it('carries the manual day-type override', () => {
+    const records = shredStore('health_training_v1', {
+      programStartDate: '2026-06-08',
+      bodyMetrics: [],
+      logs: {
+        '2026-06-08': {
+          dayKey: 'push', dayTypeOverride: 'rest', weekNum: 1, phase: 1,
+          completed: false, notes: '', exercises: {},
+        },
+      },
+    });
+    const session = records.find((r) => r.domain === 'session_log');
+    expect(session!.fields.dayTypeOverride).toBe('rest');
+  });
+
+  it('carries targetPlanVersion and dayTypeTargets so macros survive a round trip', () => {
+    const records = shredStore('nutrition_tracker_user_settings', {
+      targets: { dailyCalories: 2101, dailyProtein: 190, dailyCarbs: 180, dailyFats: 69 },
+      targetPlanVersion: '2026-09-09-recomp-2101',
+      dayTypeTargets: {
+        training: { dailyCalories: 2101, dailyProtein: 190, dailyCarbs: 180, dailyFats: 69 },
+        rest: { dailyCalories: 1901, dailyProtein: 190, dailyCarbs: 130, dailyFats: 69 },
+      },
+      theme: 'light',
+    });
+    const settings = records.find((r) => r.domain === 'user_settings');
+    expect(settings!.fields.targetPlanVersion).toBe('2026-09-09-recomp-2101');
+    expect(settings!.fields.dayTypeTargets).toBeDefined();
+  });
+});
+
+describe('manual meal description syncs', () => {
+  it('carries the description on a food entry', () => {
+    const records = shredStore('nutrition_tracker_daily_entries', {
+      '2026-06-24': {
+        date: '2026-06-24',
+        foodEntries: [{
+          id: 'm1', foodId: 'manual-dinner-macros', foodName: 'Steak and potato',
+          description: 'Steak and potato', portion: 0,
+          calories: 720, protein: 55, carbs: 60, fats: 26,
+          mealType: 'dinner', timestamp: '2026-06-24T18:00:00.000Z',
+          servingType: 'manual', isManualMacroEntry: true,
+        }],
+        exercises: [],
+        totalCalories: 720, totalProtein: 55, totalCarbs: 60, totalFats: 26,
+        totalExerciseCalories: 0, netCalories: 720,
+      },
+    });
+    const food = records.find((r) => r.domain === 'food_entry');
+    expect(food!.fields.description).toBe('Steak and potato');
+  });
+});

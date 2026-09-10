@@ -17,6 +17,7 @@ const FoodEntry = ({ selectedDate, onEntryAdded }: FoodEntryProps) => {
   const [showResults, setShowResults] = useState(false);
   const [inputMode, setInputMode] = useState<'weight' | 'piece'>('weight');
   const [entryMode, setEntryMode] = useState<'food' | 'mealTotals'>('food');
+  const [manualDescription, setManualDescription] = useState('');
   const [manualCalories, setManualCalories] = useState('');
   const [manualProtein, setManualProtein] = useState('');
   const [manualCarbs, setManualCarbs] = useState('');
@@ -117,9 +118,11 @@ const FoodEntry = ({ selectedDate, onEntryAdded }: FoodEntryProps) => {
 
     addManualMealEntry(selectedDate, {
       mealType,
+      description: manualDescription,
       ...manualMacroValues,
     });
 
+    setManualDescription('');
     setManualCalories('');
     setManualProtein('');
     setManualCarbs('');
@@ -348,6 +351,24 @@ const FoodEntry = ({ selectedDate, onEntryAdded }: FoodEntryProps) => {
       {entryMode === 'mealTotals' && (
         <div className="mb-4 p-4 bg-gray-50 dark:bg-gray-900 rounded-lg">
           <h4 className="font-semibold mb-3">Enter total macros for this meal</h4>
+
+          {/* What the meal was. The totals alone say nothing about what
+              produced them, which makes the log impossible to review later. */}
+          <div className="mb-3">
+            <label className="block text-sm font-medium mb-1" htmlFor="meal-description">
+              What was it? <span className="text-gray-400 font-normal">(optional)</span>
+            </label>
+            <input
+              id="meal-description"
+              type="text"
+              value={manualDescription}
+              onChange={(e) => setManualDescription(e.target.value)}
+              placeholder="Chicken, rice and broccoli"
+              maxLength={200}
+              className="input-field"
+            />
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-sm font-medium mb-1">Calories</label>
@@ -399,7 +420,10 @@ const FoodEntry = ({ selectedDate, onEntryAdded }: FoodEntryProps) => {
             </div>
           </div>
           <div className="mt-3 text-sm text-gray-600 dark:text-gray-400">
-            This logs one entry named “{mealType.charAt(0).toUpperCase() + mealType.slice(1)} totals” instead of five separate foods.
+            This logs one entry named “
+            {manualDescription.trim()
+              || `${mealType.charAt(0).toUpperCase()}${mealType.slice(1)} totals`}
+            ” instead of several separate foods.
           </div>
         </div>
       )}

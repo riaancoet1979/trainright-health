@@ -32,7 +32,8 @@ const pick = (source: Record<string, unknown>, keys: readonly string[]): Record<
 };
 
 const FOOD_FIELDS = ['foodId', 'foodName', 'portion', 'calories', 'protein', 'carbs',
-  'fats', 'mealType', 'timestamp', 'pieceCount', 'servingType', 'isManualMacroEntry'] as const;
+  'fats', 'mealType', 'timestamp', 'pieceCount', 'servingType', 'isManualMacroEntry',
+  'description'] as const;
 const EXERCISE_FIELDS = ['name', 'duration', 'caloriesBurned', 'type', 'timestamp'] as const;
 const CUSTOM_FOOD_FIELDS = ['name', 'calories', 'protein', 'carbs', 'fats', 'category',
   'brand', 'servingType', 'averageWeight', 'isCustom'] as const;
@@ -43,9 +44,12 @@ const BODY_STAT_FIELDS = ['date', 'weight', 'bodyFat', 'waist', 'chest', 'hips',
   'inBodyScoreMax', 'basalMetabolicRateKcal', 'recommendedCalorieIntakeKcal', 'waistHipRatio',
   'visceralFatLevel', 'obesityDegreePercent', 'targetWeightKg', 'weightControlKg', 'fatControlKg',
   'muscleControlKg', 'segmentalLean', 'segmentalFat', 'needsReview', 'reviewFields', 'notes'] as const;
-const SESSION_FIELDS = ['dayKey', 'dayKeyOverride', 'weekNum', 'phase', 'readiness',
-  'shoulderPain', 'redFlags', 'completed', 'notes'] as const;
-const SET_FIELDS = ['weight', 'reps', 'done', 'leftWeight', 'leftReps', 'leftDone',
+const SESSION_FIELDS = ['dayKey', 'dayKeyOverride', 'dayTypeOverride', 'weekNum',
+  'phase', 'readiness', 'shoulderPain', 'redFlags', 'completed', 'notes'] as const;
+// 'rir' is the RIR actually felt on the set. Without it here the field is
+// written locally and silently never syncs — these allowlists are the only
+// thing that decides what crosses devices.
+const SET_FIELDS = ['weight', 'reps', 'rir', 'done', 'leftWeight', 'leftReps', 'leftDone',
   'rightWeight', 'rightReps', 'rightDone'] as const;
 
 const shredDailyEntries = (store: unknown): SyncRecord[] => {
@@ -190,7 +194,13 @@ const shredUserSettings = (store: unknown): SyncRecord[] => {
     dailyCarbs: targets.dailyCarbs ?? 0,
     dailyFats: targets.dailyFats ?? 0,
     theme: typeof store.theme === 'string' ? store.theme : 'light',
-    ...pick(store, ['pushupReminders', 'restTimerSeconds', 'mealSplit', 'staples']),
+    // targetPlanVersion and dayTypeTargets were both missing here. Without
+    // them a device receiving synced settings has no version stamp, so
+    // getUserSettings() sees a mismatch and immediately overwrites the synced
+    // macros with the hardcoded defaults — targets could not survive a round
+    // trip between devices.
+    ...pick(store, ['pushupReminders', 'restTimerSeconds', 'mealSplit', 'staples',
+      'targetPlanVersion', 'dayTypeTargets']),
   };
 
   return [{ domain: 'user_settings', id: 'singleton', fields }];
