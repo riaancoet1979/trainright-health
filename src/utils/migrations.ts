@@ -26,7 +26,7 @@ export const LATEST_SCHEMA_VERSIONS: Record<string, number> = {
   nutrition_tracker_custom_foods: 1,
   nutrition_tracker_daily_entries: 1,
   nutrition_tracker_achievements: 1,
-  health_training_v1: 1,
+  health_training_v1: 2,
   health_metrics_v1: 1,
   trainright_body_stats: 1,
 };
@@ -62,6 +62,59 @@ export const writeSchemaMeta = (meta: SchemaMeta): void => {
  */
 type StepFn = (raw: unknown) => unknown;
 
+
+/**
+ * health_training_v1 v1 → v2 — Calisthenics Foundation 16 (4 days, keyed by
+ * weekday) → Garage Block 16 (5 sessions, keyed by movement).
+ *
+ * Rewrites every log's `dayKey` and `dayKeyOverride` onto the new session
+ * keys so historical sessions keep resolving against the programme and keep
+ * counting in the weekly review. Without this, old logs resolve to days that
+ * no longer exist: the set data survives on disk but stops rendering, which
+ * reads to the user as data loss.
+ *
+ * Mapping follows the closest movement match:
+ *   mon (Lower + Core)   → legs
+ *   tue (Pull + Rehab)   → pull
+ *   thu (Push + Core)    → push
+ *   sat (Hinge + Skills) → lower
+ *
+ * Forward-only and idempotent: keys already migrated are left alone, and
+ * every other field on the log is preserved untouched.
+ */
+const LEGACY_TO_SESSION: Record<string, string> = {
+  mon: 'legs',
+  tue: 'pull',
+  thu: 'push',
+  sat: 'lower',
+};
+
+export const migrateTrainingV1toV2 = (raw: unknown): unknown => {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const data = raw as { logs?: Record<string, Record<string, unknown>> };
+  if (!data.logs || typeof data.logs !== 'object') return undefined;
+
+  let changed = false;
+  const logs: Record<string, Record<string, unknown>> = {};
+  for (const [date, log] of Object.entries(data.logs)) {
+    if (!log || typeof log !== 'object') { logs[date] = log; continue; }
+    const next = { ...log };
+    const dk = next.dayKey;
+    if (typeof dk === 'string' && LEGACY_TO_SESSION[dk]) {
+      next.dayKey = LEGACY_TO_SESSION[dk];
+      changed = true;
+    }
+    const dko = next.dayKeyOverride;
+    if (typeof dko === 'string' && LEGACY_TO_SESSION[dko]) {
+      next.dayKeyOverride = LEGACY_TO_SESSION[dko];
+      changed = true;
+    }
+    logs[date] = next;
+  }
+  if (!changed) return undefined; // nothing to rewrite — leave the store as-is
+  return { ...data, logs };
+};
+
 /**
  * Per-store, per-target-version migrations. Each entry takes the store from
  * (version - 1) to (version). For the v0 → v1 introduction step, every store
@@ -72,7 +125,7 @@ const MIGRATIONS: Record<string, Record<number, StepFn>> = {
   nutrition_tracker_custom_foods: { 1: () => undefined },
   nutrition_tracker_daily_entries: { 1: () => undefined },
   nutrition_tracker_achievements: { 1: () => undefined },
-  health_training_v1: { 1: () => undefined },
+  health_training_v1: { 1: () => undefined, 2: migrateTrainingV1toV2 },
   health_metrics_v1: { 1: () => undefined },
   trainright_body_stats: { 1: () => undefined },
 };

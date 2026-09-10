@@ -3,7 +3,7 @@
 The combined health app: **TrainRight** (16-week training program) + **Nutrition & Activity Tracker** merged into one React + TypeScript PWA.
 
 ## What was merged
-- Training: 16-week "Calisthenics Foundation 16" program (see PROGRAM.md), session logging with set tracking, Green/Yellow/Red readiness that auto-adjusts volume, daily shoulder-pain slider that removes pain-restricted exercises, rest timer, bodyweight log, last-session placeholders (no phantom logs).
+- Training: 16-week "Garage Block 16" programme (see PROGRAM.md) — 5 days/week, Push / Pull / Legs / Upper / Lower, every muscle twice. Per-set weight, reps and RIR logging; a note per exercise; Green/Yellow/Red readiness that auto-adjusts volume; a wall-clock rest timer driven by each exercise's own prescription; bodyweight log; last-session placeholders (no phantom logs).
 - Nutrition: everything from the original tracker (SA food database, calendar, analytics, pushups, steps, achievements) — now with **training-day vs rest-day macro targets** that switch automatically.
 - Migration: Settings -> "Program & nutrition targets" -> import old TrainRight (`trainright_v1` JSON) and full nutrition backups.
 

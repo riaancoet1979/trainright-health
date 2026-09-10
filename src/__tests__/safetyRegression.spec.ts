@@ -69,65 +69,41 @@ describe('H-02 acute symptom screen forces RED', () => {
 // H-03 — Strict pull-up prerequisite
 // ─────────────────────────────────────────────────────────────────
 
-const phase4Tue = () => {
+const blockCPull = () => {
   const phase = PHASES.find((p) => p.weeks.includes(13))!;
-  return phase.days.find((d) => d.key === 'tue')!;
+  return phase.days.find((d) => d.key === 'pull')!;
 };
 
-describe('H-03 strict pull-up prerequisite', () => {
-  it('the program data tags strict_pullup with a band_pullup prerequisite', () => {
-    const strict = phase4Tue().exercises.find((e) => e.id === 'strict_pullup')!;
-    expect(strict.prerequisite).toBeDefined();
-    expect(strict.prerequisite!.sourceExerciseId).toBe('band_pullup');
-    expect(strict.prerequisite!.fallbackExerciseId).toBe('band_pullup');
+describe('H-03 prerequisite gating', () => {
+  // The gating ENGINE is retained (it is how a future strict-pull-up track
+  // would be reintroduced), but Garage Block 16 declares no prerequisites:
+  // pull-ups are bodyweight clusters from week 1, gated by the cluster rule
+  // rather than by a capacity test. These tests pin that down so a stray
+  // prerequisite cannot appear unnoticed.
+  it('no exercise in the programme declares a prerequisite', () => {
+    for (const p of PHASES) {
+      for (const d of p.days) {
+        for (const ex of d.exercises) {
+          expect(ex.prerequisite, `${ex.id} in phase ${p.phase}`).toBeUndefined();
+        }
+      }
+    }
   });
 
-  it('meetsPrerequisite is false when there are no prior band-pullup logs', () => {
+  it('applyPrerequisites is a pass-through when nothing declares one', () => {
     setProgramStartDate('2026-01-05');
-    const strict = phase4Tue().exercises.find((e) => e.id === 'strict_pullup')!;
-    expect(meetsPrerequisite(strict, '2026-03-31')).toBe(false);
-  });
-
-  it('meetsPrerequisite is false when only ONE qualifying session exists', () => {
-    setProgramStartDate('2026-01-05');
-    updateSessionLog('2026-03-24', (l) => {
-      l.exercises['band_pullup'] = {
-        sets: Array.from({ length: 4 }, () => ({ weight: '', reps: '8', done: true })),
-      };
-    });
-    const strict = phase4Tue().exercises.find((e) => e.id === 'strict_pullup')!;
-    expect(meetsPrerequisite(strict, '2026-03-31')).toBe(false);
-  });
-
-  it('meetsPrerequisite is true when last 2 sessions hit the top of the band-pullup rep range', () => {
-    setProgramStartDate('2026-01-05');
-    // Phase 2 band_pullup is 4 sets × 5–8 reps; top = 8.
-    const goodSession = (date: string) => updateSessionLog(date, (l) => {
-      l.exercises['band_pullup'] = {
-        sets: Array.from({ length: 4 }, () => ({ weight: '', reps: '8', done: true })),
-      };
-    });
-    goodSession('2026-03-17');
-    goodSession('2026-03-24');
-    const strict = phase4Tue().exercises.find((e) => e.id === 'strict_pullup')!;
-    expect(meetsPrerequisite(strict, '2026-03-31')).toBe(true);
-  });
-
-  it('applyPrerequisites swaps strict_pullup for band_pullup when unmet and tags the substitution reason', () => {
-    setProgramStartDate('2026-01-05');
-    const day = phase4Tue();
+    const day = blockCPull();
     const gated = applyPrerequisites(day.exercises, '2026-03-31');
-    const strictSlot = gated[0];
-    expect(strictSlot.id).toBe('band_pullup');
-    expect('prerequisiteUnmet' in strictSlot && strictSlot.prerequisiteUnmet).toBeTruthy();
+    expect(gated.map((e) => e.id)).toEqual(day.exercises.map((e) => e.id));
+    for (const e of gated) {
+      expect('prerequisiteUnmet' in e && e.prerequisiteUnmet).toBeFalsy();
+    }
   });
 
-  it('applyPrerequisites leaves untagged exercises unchanged', () => {
+  it('meetsPrerequisite fails open for an exercise with no prerequisite', () => {
     setProgramStartDate('2026-01-05');
-    const day = phase4Tue();
-    const gated = applyPrerequisites(day.exercises, '2026-03-31');
-    const row = gated.find((e) => e.id === 'inverted_row_elev')!;
-    expect('prerequisiteUnmet' in row && (row as ProgramExercise & { prerequisiteUnmet?: string }).prerequisiteUnmet).toBeFalsy();
+    const ex = blockCPull().exercises[0];
+    expect(meetsPrerequisite(ex, '2026-03-31')).toBe(true);
   });
 });
 
@@ -173,19 +149,19 @@ describe('M-05 coach progression requires ALL sets at top', () => {
     // Bake two band_pullup sessions where only 3 of the 4 prescribed sets are done.
     const partial = (date: string) => updateSessionLog(date, (l) => {
       l.completed = true;
-      l.exercises['band_pullup'] = {
+      l.exercises['bb_row'] = {
         sets: [
-          { weight: '', reps: '8', done: true },
-          { weight: '', reps: '8', done: true },
-          { weight: '', reps: '8', done: true },
+          { weight: '60', reps: '10', done: true },
+          { weight: '60', reps: '10', done: true },
+          { weight: '60', reps: '10', done: true },
           { weight: '', reps: '', done: false },
         ],
       };
     });
-    partial('2026-04-14'); // week 2 Tue
-    partial('2026-04-21'); // week 3 Tue
+    partial('2026-04-14'); // week 2 Tue — Pull
+    partial('2026-04-21'); // week 3 Tue — Pull
     const review = weeklyReview('2026-04-23'); // sometime in week 3
-    const recommends = review.exerciseRecs.find((r) => r.exerciseName.includes('Band'));
+    const recommends = review.exerciseRecs.find((r) => r.exerciseName.includes('Row'));
     expect(recommends).toBeUndefined();
   });
 
@@ -193,14 +169,14 @@ describe('M-05 coach progression requires ALL sets at top', () => {
     setProgramStartDate('2026-04-06');
     const full = (date: string) => updateSessionLog(date, (l) => {
       l.completed = true;
-      l.exercises['band_pullup'] = {
-        sets: Array.from({ length: 4 }, () => ({ weight: '', reps: '8', done: true })),
+      l.exercises['bb_row'] = {
+        sets: Array.from({ length: 4 }, () => ({ weight: '60', reps: '10', done: true })),
       };
     });
     full('2026-04-14');
     full('2026-04-21');
     const review = weeklyReview('2026-04-23');
-    const recommends = review.exerciseRecs.find((r) => r.exerciseName.includes('Band'));
+    const recommends = review.exerciseRecs.find((r) => r.exerciseName.includes('Row'));
     expect(recommends).toBeDefined();
     expect(recommends!.action).toBe('progress');
   });
@@ -322,9 +298,9 @@ describe('per-date day-key override', () => {
   it('Sunday with an override resolves to that day\'s session', () => {
     setProgramStartDate('2026-04-06');
     // 2026-06-07 is a Sunday but the user wants to do Monday's workout.
-    const sess = getSessionForDate('2026-06-07', { dayKeyOverride: 'mon' });
+    const sess = getSessionForDate('2026-06-07', { dayKeyOverride: 'push' });
     expect(sess).not.toBeNull();
-    expect(sess!.day.key).toBe('mon');
+    expect(sess!.day.key).toBe('push');
     expect(sess!.weekNum).toBeGreaterThan(0);
   });
 
@@ -337,11 +313,11 @@ describe('per-date day-key override', () => {
 
   it('override on a training day swaps the loaded workout', () => {
     setProgramStartDate('2026-04-06');
-    // 2026-04-13 is a Monday — override to load Tuesday's workout instead.
+    // 2026-04-13 is a Monday (Push) — override to load Pull instead.
     const natural = getSessionForDate('2026-04-13');
-    const overridden = getSessionForDate('2026-04-13', { dayKeyOverride: 'tue' });
-    expect(natural?.day.key).toBe('mon');
-    expect(overridden?.day.key).toBe('tue');
+    const overridden = getSessionForDate('2026-04-13', { dayKeyOverride: 'pull' });
+    expect(natural?.day.key).toBe('push');
+    expect(overridden?.day.key).toBe('pull');
   });
 
   it('weeklyReview honors override — Sunday completion counts as planned + completed', async () => {
@@ -350,14 +326,14 @@ describe('per-date day-key override', () => {
     // Week of Mon 2026-04-13 contains Sun 2026-04-19. User trained Monday's
     // workout on Sunday and marked it complete.
     updateSessionLog('2026-04-19', (l) => {
-      l.dayKeyOverride = 'mon';
-      l.dayKey = 'mon';
+      l.dayKeyOverride = 'push';
+      l.dayKey = 'push';
       l.completed = true;
       l.readiness = 'green';
     });
     const review = weeklyReview('2026-04-19');
-    // Natural week has 4 planned (mon/tue/thu/sat) + 1 from the override = 5.
-    expect(review.sessionsPlanned).toBe(5);
+    // Natural week has 5 planned (push/pull/legs/upper/lower) + 1 override = 6.
+    expect(review.sessionsPlanned).toBe(6);
     expect(review.sessionsCompleted).toBeGreaterThanOrEqual(1);
   });
 });

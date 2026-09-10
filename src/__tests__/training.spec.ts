@@ -7,44 +7,95 @@ import {
   DAY_KEY_TO_LETTER, LETTER_TO_DAY_KEY,
 } from '../utils/training';
 import { PHASES, getPhaseForWeek, DEFAULT_DAY_TYPE_TARGETS } from '../data/program';
+import type { ProgramExercise } from '../types/training';
 
 beforeEach(() => {
   localStorage.clear();
 });
 
 describe('program data', () => {
-  it('covers weeks 1–16 across 4 phases', () => {
+  it('covers weeks 1–16 across its phases', () => {
     const weeks = PHASES.flatMap((p) => p.weeks);
     expect(weeks.sort((a, b) => a - b)).toEqual(Array.from({ length: 16 }, (_, i) => i + 1));
   });
 
-  it('every phase has all 4 training days', () => {
+  it('every phase has all 5 sessions', () => {
     for (const p of PHASES) {
-      expect(p.days.map((d) => d.key).sort()).toEqual(['mon', 'sat', 'thu', 'tue']);
+      expect(p.days.map((d) => d.key).sort())
+        .toEqual(['legs', 'lower', 'pull', 'push', 'upper']);
     }
   });
 
-  it('contains no overhead pressing anywhere', () => {
+  it('contains NO dips anywhere — the standing equipment constraint', () => {
     for (const p of PHASES) {
       for (const d of p.days) {
         for (const ex of d.exercises) {
-          expect(ex.name.toLowerCase()).not.toContain('overhead');
-          expect(ex.id).not.toContain('ohp');
+          expect(ex.name.toLowerCase(), `${ex.id} in phase ${p.phase}`).not.toContain('dip');
+          expect(ex.category, `${ex.id} in phase ${p.phase}`).not.toBe('dip');
         }
       }
     }
   });
 
-  it('all hanging/dip/landmine work is flagged painFreeOnly where it loads the shoulder overhead or in support', () => {
-    const mustBePainFree = ['scap_pull_supported', 'pullup_eccentric', 'strict_pullup', 'dips', 'weighted_dips', 'landmine_press', 'dead_hang_supported', 'dragon_flag'];
+  it('programmes pull-ups as clusters and never prescribes them to failure', () => {
+    for (const p of PHASES) {
+      const pull = p.days.find((d) => d.key === 'pull')!;
+      const pullup = pull.exercises.find((e) => e.category === 'pullup');
+      expect(pullup, `phase ${p.phase} has a pull-up`).toBeTruthy();
+      // Deload weeks relax the RIR wording and cap every lift at 2 sets; a
+      // block week must keep the cluster shape and the instruction.
+      if (p.label.includes('Block')) {
+        expect(pullup!.rir).toBe('never to failure');
+        expect(pullup!.sets).toBeGreaterThanOrEqual(5); // clusters, not 3 hard sets
+      }
+    }
+  });
+
+  it('every exercise carries a machine-readable rest so the timer is per-exercise', () => {
     for (const p of PHASES) {
       for (const d of p.days) {
         for (const ex of d.exercises) {
-          if (mustBePainFree.includes(ex.id)) {
-            expect(ex.painFreeOnly, `${ex.id} in phase ${p.phase}`).toBe(true);
+          expect(typeof ex.restSeconds, `${ex.id} in phase ${p.phase}`).toBe('number');
+          expect(ex.restSeconds!, `${ex.id} rest is at least 60 s`).toBeGreaterThanOrEqual(60);
+        }
+      }
+    }
+  });
+
+  it('no isolation exercise rests longer than 120 s — nothing past 90 s adds growth there', () => {
+    for (const p of PHASES) {
+      for (const d of p.days) {
+        for (const ex of d.exercises) {
+          if (ex.category === 'isolation' || ex.category === 'calf') {
+            expect(ex.restSeconds!, `${ex.id} in phase ${p.phase}`).toBeLessThanOrEqual(120);
           }
         }
       }
+    }
+  });
+
+  it('deload weeks cap every exercise at 2 sets', () => {
+    for (const p of PHASES.filter((x) => x.label.toLowerCase().includes('deload'))) {
+      for (const d of p.days) {
+        for (const ex of d.exercises) {
+          expect(ex.sets, `${ex.id} in ${p.label}`).toBe(2);
+        }
+      }
+    }
+  });
+
+  it('Block B adds a set to the first exercise, Block C to the first two', () => {
+    const blockA = PHASES.find((p) => p.label.startsWith('Block A'))!;
+    const blockB = PHASES.find((p) => p.label.startsWith('Block B'))!;
+    const blockC = PHASES.find((p) => p.label.startsWith('Block C'))!;
+    for (const key of ['push', 'pull', 'legs', 'upper', 'lower'] as const) {
+      const a = blockA.days.find((d) => d.key === key)!.exercises;
+      const b = blockB.days.find((d) => d.key === key)!.exercises;
+      const c = blockC.days.find((d) => d.key === key)!.exercises;
+      expect(b[0].sets, `${key} first exercise, Block B`).toBe(a[0].sets + 1);
+      expect(b[1].sets, `${key} second exercise, Block B`).toBe(a[1].sets);
+      expect(c[0].sets, `${key} first exercise, Block C`).toBe(a[0].sets + 1);
+      expect(c[1].sets, `${key} second exercise, Block C`).toBe(a[1].sets + 1);
     }
   });
 });
@@ -67,161 +118,219 @@ describe('week calculation', () => {
     expect(getWeekNum('2026-06-01', '2026-06-08')).toBeNull();
   });
 
-  it('maps weekdays to training days (Mon/Tue/Thu/Sat)', () => {
-    expect(getDayKeyForDate('2026-06-08')).toBe('mon');
-    expect(getDayKeyForDate('2026-06-09')).toBe('tue');
-    expect(getDayKeyForDate('2026-06-10')).toBeNull(); // Wed
-    expect(getDayKeyForDate('2026-06-11')).toBe('thu');
-    expect(getDayKeyForDate('2026-06-12')).toBeNull(); // Fri
-    expect(getDayKeyForDate('2026-06-13')).toBe('sat');
-    expect(getDayKeyForDate('2026-06-14')).toBeNull(); // Sun
+  it('maps weekdays to sessions — rest lands after Legs and after Lower', () => {
+    expect(getDayKeyForDate('2026-06-08')).toBe('push');  // Mon
+    expect(getDayKeyForDate('2026-06-09')).toBe('pull');  // Tue
+    expect(getDayKeyForDate('2026-06-10')).toBe('legs');  // Wed
+    expect(getDayKeyForDate('2026-06-11')).toBeNull();    // Thu — rest
+    expect(getDayKeyForDate('2026-06-12')).toBe('upper'); // Fri
+    expect(getDayKeyForDate('2026-06-13')).toBe('lower'); // Sat
+    expect(getDayKeyForDate('2026-06-14')).toBeNull();    // Sun — rest
   });
 
   it('resolves sessions to the correct phase', () => {
     setProgramStartDate('2026-06-08');
-    expect(getSessionForDate('2026-06-08')?.phase).toBe(1); // week 1
-    expect(getSessionForDate('2026-06-16')?.phase).toBe(2); // week 2 Tue
-    expect(getSessionForDate('2026-07-16')?.phase).toBe(3); // week 6 Thu
-    expect(getSessionForDate('2026-09-26')?.phase).toBe(4); // week 16 Sat
+    expect(getSessionForDate('2026-06-08')?.phase).toBe(1);  // week 1  — Block A
+    expect(getSessionForDate('2026-07-15')?.phase).toBe(2);  // week 6  — deload
+    expect(getSessionForDate('2026-07-22')?.phase).toBe(3);  // week 7  — Block B
+    expect(getSessionForDate('2026-08-26')?.phase).toBe(4);  // week 12 — deload
+    expect(getSessionForDate('2026-09-02')?.phase).toBe(5);  // week 13 — Block C
+    expect(getSessionForDate('2026-09-23')?.phase).toBe(6);  // week 16 — deload
     expect(getPhaseForWeek(11).phase).toBe(3);
+  });
+
+  it('past week 16 repeats the peak block, not the deload', () => {
+    expect(getPhaseForWeek(99).label).toContain('Block C');
   });
 });
 
 describe('readiness adjustment', () => {
-  const phase2tue = PHASES[1].days.find((d) => d.key === 'tue')!;
+  // Exercised with synthetic exercises rather than programme data: the
+  // adjustment engine still supports painFreeOnly / yellowSkip for future
+  // programmes, but Garage Block 16 sets neither, so asserting against real
+  // days would pass vacuously and prove nothing.
+  const ex = (over: Partial<ProgramExercise> & { id: string }): ProgramExercise => ({
+    name: over.id, sets: 4, repsSpec: '8–12', equipment: 'Barbell',
+    category: 'bench', rest: '2 min', restSeconds: 120, ...over,
+  });
+  const sample: ProgramExercise[] = [
+    ex({ id: 'main' }),
+    ex({ id: 'accessory', sets: 3, yellowSkip: true }),
+    ex({ id: 'shoulder_sensitive', sets: 3, painFreeOnly: true }),
+    ex({ id: 'small', sets: 2 }),
+  ];
 
   it('green keeps everything when pain ≤ 2', () => {
-    const adj = adjustForReadiness(phase2tue.exercises, 'green', 0);
+    const adj = adjustForReadiness(sample, 'green', 0);
     expect(adj.every((e) => !e.skipped)).toBe(true);
     expect(adj[0].adjustedSets).toBe(adj[0].sets);
   });
 
   it('shoulder pain > 2 removes painFreeOnly exercises even on green', () => {
-    const adj = adjustForReadiness(phase2tue.exercises, 'green', 7);
-    const scap = adj.find((e) => e.id === 'scap_pull_supported')!;
-    expect(scap.skipped).toBe(true);
-    const band = adj.find((e) => e.id === 'band_pullup')!;
-    expect(band.skipped).toBe(false);
+    const adj = adjustForReadiness(sample, 'green', 7);
+    expect(adj.find((e) => e.id === 'shoulder_sensitive')!.skipped).toBe(true);
+    expect(adj.find((e) => e.id === 'main')!.skipped).toBe(false);
   });
 
   it('yellow drops marked accessories and reduces sets (min 2)', () => {
-    const adj = adjustForReadiness(phase2tue.exercises, 'yellow', 0);
-    const row = adj.find((e) => e.id === 'single_arm_row')!;
-    expect(row.skipped).toBe(true);
-    const pullup = adj.find((e) => e.id === 'band_pullup')!;
-    expect(pullup.adjustedSets).toBe(pullup.sets - 1);
+    const adj = adjustForReadiness(sample, 'yellow', 0);
+    expect(adj.find((e) => e.id === 'accessory')!.skipped).toBe(true);
+    const main = adj.find((e) => e.id === 'main')!;
+    expect(main.adjustedSets).toBe(main.sets - 1);
     for (const e of adj.filter((x) => !x.skipped)) {
       expect(e.adjustedSets).toBeGreaterThanOrEqual(2);
     }
   });
 
   it('red skips everything', () => {
-    const adj = adjustForReadiness(phase2tue.exercises, 'red', 0);
+    const adj = adjustForReadiness(sample, 'red', 0);
     expect(adj.every((e) => e.skipped)).toBe(true);
+  });
+
+  it('a real Garage Block session survives a yellow day with ≥2 sets everywhere', () => {
+    const push = PHASES[0].days.find((d) => d.key === 'push')!;
+    const adj = adjustForReadiness(push.exercises, 'yellow', 0);
+    for (const e of adj.filter((x) => !x.skipped)) {
+      expect(e.adjustedSets, e.id).toBeGreaterThanOrEqual(2);
+    }
   });
 });
 
 describe('day-type nutrition targets', () => {
   it('returns training targets on training days, rest otherwise', () => {
     setProgramStartDate('2026-06-08');
-    expect(getTargetsForDate('2026-06-08')).toEqual(DEFAULT_DAY_TYPE_TARGETS.training);
-    expect(getTargetsForDate('2026-06-10')).toEqual(DEFAULT_DAY_TYPE_TARGETS.rest); // Wed
-    expect(getTargetsForDate('2026-06-14')).toEqual(DEFAULT_DAY_TYPE_TARGETS.rest); // Sun
+    expect(getTargetsForDate('2026-06-08')).toEqual(DEFAULT_DAY_TYPE_TARGETS.training); // Mon
+    expect(getTargetsForDate('2026-06-10')).toEqual(DEFAULT_DAY_TYPE_TARGETS.training); // Wed
+    expect(getTargetsForDate('2026-06-11')).toEqual(DEFAULT_DAY_TYPE_TARGETS.rest);     // Thu
+    expect(getTargetsForDate('2026-06-14')).toEqual(DEFAULT_DAY_TYPE_TARGETS.rest);     // Sun
   });
 });
 
-describe('rotation model A/B/C/D', () => {
-  it('DAY_KEY_TO_LETTER and LETTER_TO_DAY_KEY round-trip', () => {
-    for (const k of ['mon', 'tue', 'thu', 'sat'] as const) {
+describe('rotation model A/B/C/D/E', () => {
+  it('DAY_KEY_TO_LETTER and LETTER_TO_DAY_KEY round-trip for the five sessions', () => {
+    for (const k of ['push', 'pull', 'legs', 'upper', 'lower'] as const) {
       expect(LETTER_TO_DAY_KEY[DAY_KEY_TO_LETTER[k]]).toBe(k);
     }
   });
 
-  it('defaults to A (mon) when no history exists', () => {
-    expect(getNextRotationDayKey('2026-06-15')).toBe('mon');
+  it('maps every legacy day key to a letter so old logs never break the rotation', () => {
+    // A missing letter used to make indexOf() return -1, which pinned the
+    // suggestion to the first session forever after any pre-migration log.
+    for (const k of ['mon', 'tue', 'thu', 'sat'] as const) {
+      expect(DAY_KEY_TO_LETTER[k], k).toBeTruthy();
+    }
   });
 
-  it('suggests B after a completed A, C after B, D after C, A after D (wrap)', () => {
+  it('defaults to Push when no history exists', () => {
+    expect(getNextRotationDayKey('2026-06-15')).toBe('push');
+  });
+
+  it('rotates push → pull → legs → upper → lower → push', () => {
     setProgramStartDate('2026-06-08');
-    const complete = (iso: string, dayKey: 'mon' | 'tue' | 'thu' | 'sat') =>
+    const complete = (iso: string, dayKey: 'push' | 'pull' | 'legs' | 'upper' | 'lower') =>
       updateSessionLog(iso, (l) => { l.dayKey = dayKey; l.completed = true; });
 
-    complete('2026-06-15', 'mon'); // A done
-    expect(getNextRotationDayKey('2026-06-16')).toBe('tue'); // -> B
+    complete('2026-06-15', 'push');
+    expect(getNextRotationDayKey('2026-06-16')).toBe('pull');
 
-    complete('2026-06-16', 'tue'); // B done
-    expect(getNextRotationDayKey('2026-06-18')).toBe('thu'); // -> C
+    complete('2026-06-16', 'pull');
+    expect(getNextRotationDayKey('2026-06-17')).toBe('legs');
 
-    complete('2026-06-18', 'thu'); // C done
-    expect(getNextRotationDayKey('2026-06-20')).toBe('sat'); // -> D
+    complete('2026-06-17', 'legs');
+    expect(getNextRotationDayKey('2026-06-19')).toBe('upper');
 
-    complete('2026-06-20', 'sat'); // D done
-    expect(getNextRotationDayKey('2026-06-22')).toBe('mon'); // wraps to A
+    complete('2026-06-19', 'upper');
+    expect(getNextRotationDayKey('2026-06-20')).toBe('lower');
+
+    complete('2026-06-20', 'lower');
+    expect(getNextRotationDayKey('2026-06-22')).toBe('push'); // wraps
+  });
+
+  it('advances correctly from a legacy log (thu = old Push day → Pull next)', () => {
+    setProgramStartDate('2026-06-08');
+    updateSessionLog('2026-06-15', (l) => { l.dayKey = 'thu'; l.completed = true; });
+    expect(getNextRotationDayKey('2026-06-16')).toBe('pull');
   });
 
   it('honours dayKeyOverride when deciding "what was last trained"', () => {
     setProgramStartDate('2026-06-08');
-    // Sunday with override running A — the rotation should advance to B next.
     updateSessionLog('2026-06-14', (l) => {
-      l.dayKey = 'mon';
-      l.dayKeyOverride = 'mon';
+      l.dayKey = 'push';
+      l.dayKeyOverride = 'push';
       l.completed = true;
     });
-    expect(getNextRotationDayKey('2026-06-15')).toBe('tue');
+    expect(getNextRotationDayKey('2026-06-15')).toBe('pull');
   });
 
   it('ignores incomplete logs when picking the next session', () => {
-    updateSessionLog('2026-06-15', (l) => { l.dayKey = 'mon'; l.completed = false; });
-    // Nothing completed -> default A.
-    expect(getNextRotationDayKey('2026-06-16')).toBe('mon');
+    updateSessionLog('2026-06-15', (l) => { l.dayKey = 'pull'; l.completed = false; });
+    expect(getNextRotationDayKey('2026-06-16')).toBe('push');
   });
 });
 
 describe('spacing guards', () => {
   it('returns no guards when there is no recent history', () => {
-    expect(getSpacingGuards('2026-06-15', 'mon')).toEqual([]);
+    expect(getSpacingGuards('2026-06-15', 'push')).toEqual([]);
   });
 
-  it('warns on the third consecutive training day', () => {
-    updateSessionLog('2026-06-13', (l) => { l.dayKey = 'sat'; l.completed = true; });
-    updateSessionLog('2026-06-14', (l) => { l.dayKey = 'mon'; l.dayKeyOverride = 'mon'; l.completed = true; });
-    const guards = getSpacingGuards('2026-06-15', 'tue');
+  it('does NOT warn on three consecutive days — that is the plan', () => {
+    updateSessionLog('2026-06-13', (l) => { l.dayKey = 'push'; l.completed = true; });
+    updateSessionLog('2026-06-14', (l) => { l.dayKey = 'pull'; l.completed = true; });
+    const guards = getSpacingGuards('2026-06-15', 'legs');
+    expect(guards.some((g) => g.kind === 'consecutive_days')).toBe(false);
+  });
+
+  it('warns on the fourth consecutive training day', () => {
+    updateSessionLog('2026-06-12', (l) => { l.dayKey = 'push'; l.completed = true; });
+    updateSessionLog('2026-06-13', (l) => { l.dayKey = 'pull'; l.completed = true; });
+    updateSessionLog('2026-06-14', (l) => { l.dayKey = 'legs'; l.completed = true; });
+    const guards = getSpacingGuards('2026-06-15', 'upper');
     expect(guards.some((g) => g.kind === 'consecutive_days')).toBe(true);
   });
 
-  it('warns on B after C (Pull after Push) on adjacent days', () => {
-    updateSessionLog('2026-06-14', (l) => { l.dayKey = 'thu'; l.dayKeyOverride = 'thu'; l.completed = true; });
-    const guards = getSpacingGuards('2026-06-15', 'tue');
-    expect(guards.some((g) => g.kind === 'push_pull_back_to_back')).toBe(true);
+  it('warns when Upper follows Push on adjacent days (shared pressing)', () => {
+    updateSessionLog('2026-06-14', (l) => { l.dayKey = 'push'; l.completed = true; });
+    const guards = getSpacingGuards('2026-06-15', 'upper');
+    expect(guards.some((g) => g.kind === 'muscle_overlap')).toBe(true);
   });
 
-  it('warns on C after B (Push after Pull) on adjacent days', () => {
-    updateSessionLog('2026-06-14', (l) => { l.dayKey = 'tue'; l.dayKeyOverride = 'tue'; l.completed = true; });
-    const guards = getSpacingGuards('2026-06-15', 'thu');
-    expect(guards.some((g) => g.kind === 'push_pull_back_to_back')).toBe(true);
+  it('warns when Lower follows Legs on adjacent days (shared quads/hams)', () => {
+    updateSessionLog('2026-06-14', (l) => { l.dayKey = 'legs'; l.completed = true; });
+    const guards = getSpacingGuards('2026-06-15', 'lower');
+    expect(guards.some((g) => g.kind === 'muscle_overlap')).toBe(true);
   });
 
-  it('does not warn push/pull when planned session is A or D', () => {
-    updateSessionLog('2026-06-14', (l) => { l.dayKey = 'thu'; l.completed = true; });
-    const guards = getSpacingGuards('2026-06-15', 'mon');
-    expect(guards.some((g) => g.kind === 'push_pull_back_to_back')).toBe(false);
+  it('does NOT warn on Pull after Push — that pair is fine back-to-back', () => {
+    updateSessionLog('2026-06-14', (l) => { l.dayKey = 'push'; l.completed = true; });
+    const guards = getSpacingGuards('2026-06-15', 'pull');
+    expect(guards.some((g) => g.kind === 'muscle_overlap')).toBe(false);
   });
 
-  it('warns when 4+ sessions were completed in the previous 7 days', () => {
+  it('does not warn about weekly volume at four sessions — five is the programme', () => {
     for (let i = 1; i <= 4; i++) {
       const d = new Date('2026-06-15T00:00:00');
       d.setDate(d.getDate() - i);
-      const iso = d.toISOString().slice(0, 10);
-      updateSessionLog(iso, (l) => { l.dayKey = 'mon'; l.completed = true; });
+      updateSessionLog(d.toISOString().slice(0, 10), (l) => { l.dayKey = 'push'; l.completed = true; });
     }
-    const guards = getSpacingGuards('2026-06-15', 'tue');
+    const guards = getSpacingGuards('2026-06-15', 'pull');
+    expect(guards.some((g) => g.kind === 'high_weekly_volume')).toBe(false);
+  });
+
+  it('warns when 5+ sessions were completed in the previous 7 days', () => {
+    for (let i = 1; i <= 5; i++) {
+      const d = new Date('2026-06-15T00:00:00');
+      d.setDate(d.getDate() - i);
+      updateSessionLog(d.toISOString().slice(0, 10), (l) => { l.dayKey = 'push'; l.completed = true; });
+    }
+    const guards = getSpacingGuards('2026-06-15', 'pull');
     expect(guards.some((g) => g.kind === 'high_weekly_volume')).toBe(true);
   });
 
-  it('legacy logs without dayKeyOverride still resolve in guards (back-compat)', () => {
+  it('legacy logs still resolve in guards (back-compat)', () => {
+    // 'thu' was the old Push day → overlaps with Upper.
     updateSessionLog('2026-06-14', (l) => { l.dayKey = 'thu'; l.completed = true; });
-    const guards = getSpacingGuards('2026-06-15', 'tue');
-    expect(guards.some((g) => g.kind === 'push_pull_back_to_back')).toBe(true);
+    const guards = getSpacingGuards('2026-06-15', 'upper');
+    expect(guards.some((g) => g.kind === 'muscle_overlap')).toBe(true);
   });
 });
 

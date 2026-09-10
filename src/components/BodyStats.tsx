@@ -576,8 +576,11 @@ const BodyStats = () => {
     }
     resetForm();
     bump();
-    // Scroll to charts so user sees their progress immediately
-    setTimeout(() => chartsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80);
+    // Scroll to charts so user sees their progress immediately.
+    // Optional-call: this fires from a timer that can outlive the component,
+    // and scrollIntoView is absent in jsdom, where it threw as an UNCAUGHT
+    // error after the test that scheduled it had already finished.
+    setTimeout(() => chartsRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' }), 80);
   };
 
   const handleEdit = (e: BodyStatEntry) => {

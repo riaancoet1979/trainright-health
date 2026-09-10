@@ -1,87 +1,148 @@
-# Calisthenics Foundation 16 — Riaan's Program & Nutrition Plan
-**Built:** 2026-06-05 · **Athlete:** Riaan, 46, 178 cm, 81 kg, ~19% BF
-**App:** TrainRight Health (this folder) — the program below is encoded in `src/data/program.ts`.
+# Garage Block 16 — Riaan's Programme & Nutrition Plan
+**Built:** 2026-09-10 · **Replaces:** Calisthenics Foundation 16 (2026-06-05)
+**App:** TrainRight Health (this folder) — the programme below is encoded in `src/data/program.ts`.
 
 ---
 
-## Profile summary (from onboarding)
-- 4 training days/week: **Mon, Tue, Thu, Sat** — 20 min treadmill + 40–50 min training
-- Goal: balanced all-round → a bit more fat loss, then lean gain
-- Skills wanted: pull-ups & dips, L-sit, handstand, pistol squat
-- Recent: 101 kg → 81 kg (was on retatrutide, stopped ~3 weeks ago, weight stable)
-- Sleep: 7–8 h winter, ~6 h summer
-- **Left shoulder: 7/10 pain on overhead and hanging, slight on incline bench**
-- Strength: band pull-ups ×5, push-ups 10–15, dips 6–8, DB bench 40 kg 4×10, dead hang 12 s
-- Equipment: DBs, KBs, bench, squat rack, barbell + 2×15 kg plates, pull-up/dip bars, 1 band, landmine, treadmill
-- Steps: ~5,000/day realistic (goal set accordingly)
+## What changed and why
 
-## Hard safety rules (encoded in the app)
-1. **No overhead pressing anywhere.** Landmine press is the only inclined line, and only at shoulder pain ≤ 2/10 on the day.
-2. **All hanging starts feet-supported.** Progress hang time only at pain ≤ 2/10.
-3. **Handstand deferred** until pain-free + physio clearance.
-4. Daily shoulder-pain slider (0–10) auto-removes pain-restricted exercises above 2/10.
-5. Readiness Green/Yellow/Red adjusts every session (Yellow: −1 set, accessories dropped; Red: rest).
-6. **Get the shoulder professionally assessed.** 7/10 is not a "train through it" number.
+The previous programme was a 4-day calisthenics block built around a left
+shoulder at 7/10 on overhead and hanging work. That constraint has been
+professionally assessed and resolved, so the shoulder-specific scaffolding
+(no-overhead rule, feet-supported hanging progression, pain-gated exercises)
+is gone. The daily pain slider and readiness gating remain in the app for
+general use, but no exercise is flagged `painFreeOnly` any more.
 
-## Phases
-| Phase | Weeks | Focus |
+The old split also trained each muscle **once** a week. The 2025 Pelland et al.
+dose-response meta-regression (67 studies, 2,058 participants) found weekly
+**set volume** drives hypertrophy with ~100% posterior probability, while
+frequency showed effects "compatible with negligible" once volume was equated.
+But Remmert et al. found a per-session ceiling at roughly **11 fractional sets**
+— past that, extra sets in the same workout stop adding growth. On a
+once-a-week split that session ceiling becomes the weekly ceiling. Hence five
+days, every muscle twice.
+
+## Profile
+- 5 training days/week, 45–60 minutes each
+- Equipment: adjustable bench (incline + flat), squat/bench rack, pull-up bar,
+  barbell + plates, EZ bar + plates, assorted dumbbells, 2 kettlebells
+- **No dips** — not in the programme anywhere
+- **Pull-ups bodyweight only**, ~4 rep max — programmed as clusters
+- Unilateral work leads with the **left** side; the right matches, never exceeds
+
+## The split
+
+| Day | Session | Focus | Sets |
+|---|---|---|---|
+| Mon | **Push** | Chest, shoulders, triceps | 19 |
+| Tue | **Pull** | Back, rear delts, biceps | 20 |
+| Wed | **Legs** | Quad-led, calves, core | 17 |
+| Thu | *rest* | | |
+| Fri | **Upper** | Second dose — lighter, higher rep | 18 |
+| Sat | **Lower + Core** | Hinge-led, unilateral, carries | 18 |
+| Sun | *rest* | | |
+
+Sessions rotate **Push → Pull → Legs → Upper → Lower** by rotation, not by
+weekday. The app suggests the next session from the most recent completed log
+and any session can be run on any date via the day-key override.
+
+**Spacing guards** (warnings, not blocks):
+- Four consecutive training days — three is by design, four is not.
+- Muscle overlap with yesterday: Push↔Upper, Pull↔Upper, Legs↔Lower.
+  Push↔Pull back-to-back is fine and is deliberately *not* flagged.
+- Six or more sessions in the last 7 days.
+
+## Blocks
+
+| Weeks | Block | What changes |
 |---|---|---|
-| 1 — Assessment | 1 | Submaximal baselines (RIR 2–3), technique, shoulder tolerance map |
-| 2 — Foundation | 2–5 | Scap control, pain-free hang build, push/pull balance, pistol + L-sit groundwork |
-| 3 — Strength & Skill | 6–11 | Barbell squat/RDL, assistance → zero on pull-ups, dip loading, adv-tuck L-sit, low-box pistol. First strict pull-up attempt wk 9–10 IF hang ≥ 30 s pain-free |
-| 4 — Integration | 12–16 | Strict pull-up clusters, weighted dips, full pistols, one-leg→full L-sit. **Week 16 = deload + retest** |
+| 1–5 | **A — Accumulate** | Bottom of every rep range, +1 rep/set/week, 2–3 RIR drifting to 1–2 |
+| 6 | **Deload** | 2 sets each at ~60%, 4–5 RIR. Retest max pull-up. |
+| 7–11 | **B — Add a set** | +1 set on the first exercise of each day, 1–2 RIR |
+| 12 | **Deload** | As week 6 |
+| 13–15 | **C — Peak** | +1 set on the second exercise too; isolation to 0–1 RIR |
+| 16 | **Deload & retest** | Retest heavy 5s on bench, squat, row + max pull-up |
 
-## Weekly split — sessions A/B/C/D (rotation, not weekday-locked)
-From Phase 2 (Week 2 onward) the four sessions are labelled by **letter**, not weekday. Train them in **A → B → C → D** order; after D, cycle back to A. The app suggests the next session based on the most recent completed log, and you can manually pick any session on any date via the day-key override.
+## Weekly volume, against target
 
-- **A — Lower + Core:** squat pattern (goblet → barbell), pistol track, single-leg hinge, hollow work
-- **B — Pull + Shoulder rehab:** pull-up progression, inverted rows, scap pulls (feet supported), supported dead hang, band pull-aparts + external rotations (extra left-side set)
-- **C — Push + Core:** DB bench, dip track, push-up progressions, landmine press (pain-free only), close-grip floor press (the only triceps line — overhead extensions are **banned**), anti-extension/rotation core
-- **D — Hinge + Skills + Conditioning:** KB swings, RDL, L-sit track, pistol practice, KB intervals, mobility, optional dragon-flag finisher
+| Muscle | Direct | + indirect | Target |
+|---|---|---|---|
+| Back | 17 | 19 | 14–20 |
+| Chest | 13 | 13 | 12–16 |
+| Quads | 12 | 14 | 12–16 |
+| Hams & glutes | 10 | 13 | 10–14 |
+| Side delts | 8 | 12 | 10–16 |
+| Calves | 8 | 8 | 8–12 |
+| Triceps | 7 | 12 | 8–14 |
+| Biceps | 5 | 11 | 8–12 |
+| Rear delts | 3 | 7 | 6–10 |
+| Core | 5 | 7 | 6–10 |
 
-**Spacing rules** (the app warns when violated):
-- Max 2 consecutive training days.
-- No B (Pull) ↔ C (Push) on consecutive days — both load the shoulder; insert a rest day or run A/D between.
-- ≥ 4 sessions in the last 7 days = bonus volume, keep extras light.
+Indirect sets count as half — a barbell row is a full set for back and half a
+set for biceps. That half-counting method predicted real-world growth better
+than any other in the 2025 analysis, which is why arms get no dedicated day
+and still land in range.
 
-Internal day keys (`mon`/`tue`/`thu`/`sat`) are preserved in the data so historical logs from the calendar-driven era still render and count.
+## Rules encoded in the app
 
-## Week 2 calibration (Phase 2, set 2026-06-10 from assessment)
-Restated from the Week 1 assessment outcomes:
-- **Goblet squat** 16–20 kg (10 kg was far too light).
-- **Single-arm row** 16–20 kg.
-- **KB swing** 16 kg if available.
-- **DB bench** ~15–17.5 kg/hand where 10 reps = RIR 2.
-- **Reverse lunge** start 10 kg DBs.
-- **DB RDL** move toward barbell RDL 40–50 kg.
-- **Hollow rock** 3×12–15 replaces hollow hold (earned 3×45 s).
-- **Dead hang (feet supported)** 3×15–20 s — builds toward the ≥30 s hang gate before strict pull-ups.
-- **Scap pulls (supported)** **regressed** to 2×5 with maximum foot support — only at pain ≤ 2/10, otherwise sub band scap depressions.
-- **Dips** +1 rep per session while ≤ 2/10.
-- **Landmine press** add 2.5–5 kg (bar-only ×15 was pain-free week 1). Stop on any pain.
-- **Close-grip floor press** 3×10–12 — shoulder-safe triceps line. Replaces all overhead / behind-head extensions (pain 2→4/10 week 1).
-- **Dragon flag** (optional D finisher) 2×5 slow — pain-free only.
+1. **Rest**: long enough that the next set does not collapse, not a second
+   longer. No hypertrophy benefit past 90 s (2024 Bayesian meta-analysis); the
+   only band that measurably underperforms is under 60 s. Isolation 90 s,
+   secondary compounds 2 min, heavy compounds 2–3 min. Each exercise carries
+   its own `restSeconds` and ticking a set starts *that* timer.
+2. **RIR**: reps in reserve controls intensity, not the rep count. Anything
+   from 5 to 30 reps grows muscle at roughly the same rate if the set finishes
+   close to failure. Logged per set, not just prescribed.
+3. **Double progression**: hold the weight until every set hits the top of its
+   range at target RIR, then +2.5 kg upper / +5 kg lower and back to the bottom.
+   Two sessions with no rep added is a stall — drop 10% and rebuild.
+4. **Pull-ups are clusters, never to failure inside a block.** 5×2–3 well short
+   of failure. When 5×3 is easy, go to 5×4. True max only in weeks 6, 12, 16.
+5. **Log weight × reps × RIR every set.** Double progression is guesswork
+   without last week's numbers.
 
-## Progression rules (double progression)
-Progress only when: all sets at top of rep range, clean technique, target RIR met, no concerning pain, recovery OK. One variable at a time: reps → sets → ROM → slower eccentric → less assistance → harder variation → load.
+Full text of each rule lives in `PROGRAM_NOTES` in `src/data/program.ts` and
+renders in the app under "Programme notes".
 
-## 16-week targets (realistic, not guaranteed)
-- 3–5 strict pull-ups · 4×10 clean dips (or 5×5 weighted) · 15–20 s tuck/one-leg L-sit · full pistol both sides · 25+ push-ups · pain-free hang ≥ 45 s
-- Body: ~15–16% BF by ~wk 9, then lean gain
+## Swaps
 
-## Nutrition (encoded in the app — auto-switches by day type)
+| Lift | Substitute |
+|---|---|
+| Barbell Overhead Press | Seated DB press, neutral grip, left leading |
+| Barbell Bench Press | Flat DB press |
+| Dumbbell Pullover | Shorter-range KB pullover, or drop and add a row set |
+| Hanging Leg Raise | Lying leg raise / bench knee tuck |
+| Barbell Hip Thrust | KB swings 4×15, or single-leg glute bridges |
+| Front Squat | Goblet squat, heavier KB, higher reps |
+
+## History from the old programme
+
+Existing logs are preserved. The `health_training_v1` **v1 → v2 migration**
+rewrites stored day keys onto the new sessions so past sessions keep
+resolving, keep rendering their sets, and keep counting in the weekly review:
+
+| Old | New |
+|---|---|
+| `mon` (Lower + Core) | `legs` |
+| `tue` (Pull + Rehab) | `pull` |
+| `thu` (Push + Core) | `push` |
+| `sat` (Hinge + Skills) | `lower` |
+
+`DayKey` remains a tolerant union of both sets, so a log synced from a device
+still running the old build resolves rather than breaking the rotation.
+
+## Nutrition
+
+Unchanged from the previous plan — see `DEFAULT_DAY_TYPE_TARGETS` and
+`LEAN_GAIN_TARGETS` in `src/data/program.ts`.
+
 | Day type | kcal | Protein | Carbs | Fat |
 |---|---|---|---|---|
-| Training (phase: fat loss) | 2,000 | 160 g | 130 g | 95 g |
-| Rest (phase: fat loss) | 1,850 | 160 g | 95 g | 95 g |
-| Training (lean gain, ~wk 9+) | 2,350 | 160 g | 215 g | 95 g |
+| Training (fat loss) | 2,000 | 160 g | 130 g | 95 g |
+| Rest (fat loss) | 1,850 | 160 g | 95 g | 95 g |
+| Training (lean gain) | 2,350 | 160 g | 215 g | 95 g |
 | Rest (lean gain) | 2,150 | 160 g | 165 g | 95 g |
 
-- Fibre 30 g+ · Water 2.5–3 L · Weekly weigh-in trend, not daily
-- Shake (×2 daily, breakfast + lunch): **50 g whey + 3 whole eggs + 200 ml full-cream milk** ≈ 38 g protein each
-- Main meal 17:00–18:00: protein-first (250–300 g meat/chicken/fish), vegetables, carbs scaled to day type
-- Post-retatrutide: appetite will rebound — protein and the day-type targets are the guardrails. Discuss the transition with your doctor.
-- Switch to the Lean-gain preset in Settings when BF ~15–16% and training is progressing (around week 9).
-
-## Week 1 (assessment) — what to record
-Every session: weights/reps per set, RIR feel, shoulder pain 0–10, session notes. Sat: mobility screen notes (deep squat, wrist extension, shoulder ROM). End of week 1 → review together, finalise weeks 2–16 details.
+**⚠️ These were calibrated for a 4-day week.** A fifth training day shifts
+weekly energy balance and one rest day became a training day. Revisit once
+the bodyweight trend over 3–4 weeks is visible.

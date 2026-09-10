@@ -8,7 +8,7 @@ import { format } from 'date-fns';
 import { saveBodyStatEntry, getBodyStats } from './storage';
 import type { BodyStatEntry } from '../types';
 import type {
-  TrainingData, SessionLog, DayKey, Readiness, ProgramDay,
+  TrainingData, SessionLog, DayKey, LegacyDayKey, SessionKey, Readiness, ProgramDay,
   ProgramExercise, MacroTargets, DayTypeTargets, BodyMetric, LoggedSet,
   RedFlagState, SessionLetter,
 } from '../types/training';
@@ -19,14 +19,19 @@ import { writeStore } from '../sync/writeStore';
 
 export const TRAINING_KEY = 'health_training_v1';
 
+/**
+ * Natural weekday → session. Five training days with rest after Legs and
+ * after Lower, which is the spacing Garage Block 16 is written around:
+ * Push, Pull, Legs, rest, Upper, Lower, rest.
+ */
 const DAY_INDEX: Record<number, DayKey | null> = {
-  0: null, // Sun
-  1: 'mon',
-  2: 'tue',
-  3: null, // Wed rest
-  4: 'thu',
-  5: null, // Fri rest
-  6: 'sat',
+  0: null,    // Sun — rest
+  1: 'push',
+  2: 'pull',
+  3: 'legs',
+  4: null,    // Thu — rest
+  5: 'upper',
+  6: 'lower',
 };
 
 // ── Storage ──
@@ -119,37 +124,61 @@ export const getSessionForDate = (
 export const isTrainingDay = (date: Date | string): boolean =>
   getSessionForDate(date) !== null;
 
-// ── Rotation model (A/B/C/D regardless of weekday) ──────────────────────────
+// ── Rotation model (A/B/C/D/E regardless of weekday) ────────────────────────
 //
-// From Phase 2 onward the user rotates through 4 sessions in order. The
-// canonical DayKey storage stays the same so historical logs keep working —
+// The user rotates through 5 sessions in order. The canonical DayKey storage
+// stays tolerant of the legacy 4-day keys so historical logs keep working —
 // these helpers translate between the two views and suggest the next session
 // based on what was *actually trained last*, ignoring the calendar weekday.
+//
+// LEGACY MAPPING. Old sessions map onto their nearest new equivalent so
+// loggedLetter() never returns undefined for a pre-migration log — an
+// undefined letter used to make indexOf() return -1 and pin the rotation
+// suggestion to the first session forever.
+//   mon (Lower+Core)      -> C (Legs)
+//   tue (Pull+Rehab)      -> B (Pull)
+//   thu (Push+Core)       -> A (Push)
+//   sat (Hinge+Skills)    -> E (Lower)
 
 export const DAY_KEY_TO_LETTER: Record<DayKey, SessionLetter> = {
-  mon: 'A',
+  push: 'A',
+  pull: 'B',
+  legs: 'C',
+  upper: 'D',
+  lower: 'E',
+  // legacy, read-only
+  mon: 'C',
   tue: 'B',
-  thu: 'C',
-  sat: 'D',
+  thu: 'A',
+  sat: 'E',
 };
 
 export const LETTER_TO_DAY_KEY: Record<SessionLetter, DayKey> = {
-  A: 'mon',
-  B: 'tue',
-  C: 'thu',
-  D: 'sat',
+  A: 'push',
+  B: 'pull',
+  C: 'legs',
+  D: 'upper',
+  E: 'lower',
 };
 
-const ROTATION_ORDER: SessionLetter[] = ['A', 'B', 'C', 'D'];
+/** Legacy 4-day keys → the new session they became. Used by the migration. */
+export const LEGACY_DAY_KEY_MAP: Record<LegacyDayKey, SessionKey> = {
+  mon: 'legs',
+  tue: 'pull',
+  thu: 'push',
+  sat: 'lower',
+};
+
+const ROTATION_ORDER: SessionLetter[] = ['A', 'B', 'C', 'D', 'E'];
 
 /** The session letter actually trained on a log, honouring dayKeyOverride. */
 const loggedLetter = (log: SessionLog): SessionLetter =>
   DAY_KEY_TO_LETTER[log.dayKeyOverride ?? log.dayKey];
 
 /**
- * Suggest the next session to train in A->B->C->D rotation, based on the most
- * recent COMPLETED log strictly before `beforeDate`. If there is no completed
- * history, default to A (Lower + Core). After D, cycle back to A.
+ * Suggest the next session to train in A->B->C->D->E rotation, based on the
+ * most recent COMPLETED log strictly before `beforeDate`. If there is no
+ * completed history, default to A (Push). After E, cycle back to A.
  */
 export const getNextRotationDayKey = (beforeDate: Date | string): DayKey => {
   const td = getTrainingData();
@@ -165,7 +194,7 @@ export const getNextRotationDayKey = (beforeDate: Date | string): DayKey => {
 };
 
 export interface SpacingGuard {
-  kind: 'consecutive_days' | 'push_pull_back_to_back' | 'high_weekly_volume';
+  kind: 'consecutive_days' | 'muscle_overlap' | 'high_weekly_volume';
   message: string;
 }
 
@@ -176,11 +205,30 @@ const addDays = (iso: string, n: number): string => {
 };
 
 /**
+ * Overlap pairs for a 5-day PPL/Upper/Lower split. Running either of these
+ * on adjacent days doubles up on the same muscles before they have recovered.
+ * Push↔Upper and Pull↔Upper both share pressing/pulling; Legs↔Lower share
+ * quads, hams and glutes. Push↔Pull is fine back-to-back and is NOT flagged —
+ * that was a rule for the old shoulder-rehab program.
+ */
+const OVERLAP_PAIRS: Array<[SessionLetter, SessionLetter]> = [
+  ['A', 'D'], // Push  ↔ Upper
+  ['B', 'D'], // Pull  ↔ Upper
+  ['C', 'E'], // Legs  ↔ Lower
+];
+
+const overlaps = (a: SessionLetter, b: SessionLetter): boolean =>
+  OVERLAP_PAIRS.some(([x, y]) => (a === x && b === y) || (a === y && b === x));
+
+/**
  * Coaching warnings (not hard blocks) for the spacing of the planned session
  * relative to recent history. Surfaces three patterns:
- *  - consecutive_days: about to log a third consecutive training day
- *  - push_pull_back_to_back: B (Pull) directly after C (Push) or vice versa
- *  - high_weekly_volume: would be the 5th completed session in the last 7 days
+ *  - consecutive_days: about to log a FOURTH consecutive training day. Three
+ *    in a row is by design on a 5-day split (Push/Pull/Legs), so warning at
+ *    three would fire every single week.
+ *  - muscle_overlap: today repeats muscles trained yesterday (see OVERLAP_PAIRS)
+ *  - high_weekly_volume: would be the 6th completed session in the last 7 days.
+ *    Five is the plan, so the threshold sits above it.
  */
 export const getSpacingGuards = (
   date: Date | string,
@@ -195,40 +243,42 @@ export const getSpacingGuards = (
     return l && l.completed ? l : undefined;
   };
 
-  // 1) Consecutive days: the two prior days were both completed sessions
+  // 1) Consecutive days: the three prior days were all completed sessions.
+  // Three in a row is the plan (Push/Pull/Legs); four is not.
   const d1 = wasCompletedOn(addDays(today, -1));
   const d2 = wasCompletedOn(addDays(today, -2));
-  if (d1 && d2) {
+  const d3 = wasCompletedOn(addDays(today, -3));
+  if (d1 && d2 && d3) {
     out.push({
       kind: 'consecutive_days',
-      message: '3rd consecutive training day — consider resting today.',
+      message: '4th consecutive training day — the block has a rest day here for a reason.',
     });
   }
 
-  // 2) Pull (B) and Push (C) back-to-back on adjacent calendar days
+  // 2) Muscle overlap with yesterday's session
   const plannedLetter = DAY_KEY_TO_LETTER[plannedDayKey];
-  if (d1 && (plannedLetter === 'B' || plannedLetter === 'C')) {
+  if (d1 && plannedLetter) {
     const prevLetter = loggedLetter(d1);
-    const conflict =
-      (plannedLetter === 'B' && prevLetter === 'C') ||
-      (plannedLetter === 'C' && prevLetter === 'B');
-    if (conflict) {
+    if (prevLetter && overlaps(plannedLetter, prevLetter)) {
       out.push({
-        kind: 'push_pull_back_to_back',
-        message: 'Pull and Push back-to-back stresses the shoulder — insert a rest day or run A/D between.',
+        kind: 'muscle_overlap',
+        message:
+          'This session repeats muscles you trained yesterday — the second dose lands on tissue ' +
+          'that has not recovered. Move it a day, or keep today lighter.',
       });
     }
   }
 
-  // 3) High weekly volume: 4 completed sessions in the last 7 days already
+  // 3) High weekly volume: 5 completed sessions in the last 7 days already.
+  // Five IS the programme, so only flag a sixth.
   let weekly = 0;
   for (let i = 1; i <= 7; i++) {
     if (wasCompletedOn(addDays(today, -i))) weekly++;
   }
-  if (weekly >= 4) {
+  if (weekly >= 5) {
     out.push({
       kind: 'high_weekly_volume',
-      message: `${weekly} sessions in the last 7 days — extra training is bonus volume, keep it light.`,
+      message: `${weekly} sessions in the last 7 days — that is a full week already, keep extras light.`,
     });
   }
 
@@ -385,24 +435,6 @@ export const getSessionLog = (date: Date | string): SessionLog | null => {
   return d.logs[dateKey(date)] ?? null;
 };
 
-export const ensureSessionLog = (date: Date | string): SessionLog => {
-  const d = getTrainingData();
-  const key = dateKey(date);
-  if (!d.logs[key]) {
-    const sess = getSessionForDate(date);
-    d.logs[key] = {
-      dayKey: sess?.day.key ?? 'mon',
-      weekNum: sess?.weekNum ?? 0,
-      phase: sess?.phase ?? 0,
-      completed: false,
-      notes: '',
-      exercises: {},
-    };
-    saveTrainingData(d);
-  }
-  return d.logs[key];
-};
-
 export const updateSessionLog = (
   date: Date | string,
   mutate: (log: SessionLog) => void,
@@ -436,6 +468,22 @@ export const getLastExerciseLog = (
   for (const k of dates) {
     const ex = d.logs[k].exercises[exId];
     if (ex && ex.sets.some((s) => s.done)) return { date: k, sets: ex.sets };
+  }
+  return null;
+};
+
+/** Last per-exercise NOTE before a date — shown under the note box so the
+ *  reason behind last week's numbers travels with them. */
+export const getLastExerciseNote = (
+  exId: string,
+  beforeDate: Date | string,
+): { date: string; note: string } | null => {
+  const d = getTrainingData();
+  const before = dateKey(beforeDate);
+  const dates = Object.keys(d.logs).filter((k) => k < before).sort().reverse();
+  for (const k of dates) {
+    const ex = d.logs[k].exercises[exId];
+    if (ex?.note && ex.note.trim()) return { date: k, note: ex.note };
   }
   return null;
 };
@@ -477,6 +525,20 @@ export const saveDayTypeTargets = (t: DayTypeTargets): void => {
 export const getTargetsForDate = (date: Date | string): MacroTargets => {
   const t = getDayTypeTargets();
   return isTrainingDay(date) ? t.training : t.rest;
+};
+
+/**
+ * Normalise a dayKey coming from an old TrainRight export. Accepts both the
+ * new session keys and the legacy 4-day keys, mapping the latter onto their
+ * nearest new session. Anything unrecognised falls back to 'push' rather than
+ * silently collapsing every imported session onto one day, which the old
+ * whitelist did.
+ */
+const normaliseImportedDayKey = (raw: string | undefined): DayKey => {
+  const k = (raw ?? '').toLowerCase();
+  if ((['push', 'pull', 'legs', 'upper', 'lower'] as string[]).includes(k)) return k as SessionKey;
+  if (k in LEGACY_DAY_KEY_MAP) return LEGACY_DAY_KEY_MAP[k as LegacyDayKey];
+  return 'push';
 };
 
 // ── Legacy TrainRight (trainright_v1) migration ──
@@ -590,7 +652,7 @@ export const importTrainRightBackup = (json: string): MigrationResult => {
       if (!hasData && !log.completed && !(log.notes ?? '').trim()) continue;
       if (!d.logs[date]) {
         d.logs[date] = {
-          dayKey: (['mon', 'tue', 'thu', 'sat'].includes(log.dayKey ?? '') ? log.dayKey : 'mon') as DayKey,
+          dayKey: normaliseImportedDayKey(log.dayKey),
           weekNum: log.weekNum ?? 0,
           phase: log.phase ?? 0,
           completed: Boolean(log.completed),
@@ -663,12 +725,16 @@ export const importTrainRightBackup = (json: string): MigrationResult => {
 };
 
 // ── Full backup (every key this app uses) ──
+// Every store that a full export must carry. `health_metrics_v1` was missing
+// here while the parallel APP_BACKUP_KEYS list in storage.ts included it, so
+// "Export all data" silently shipped backups with no Garmin history in them.
 const ALL_KEYS = [
   'nutrition_tracker_daily_entries',
   'nutrition_tracker_user_settings',
   'nutrition_tracker_custom_foods',
   'nutrition_tracker_achievements',
   'trainright_body_stats',
+  'health_metrics_v1',
   TRAINING_KEY,
 ];
 
@@ -707,4 +773,3 @@ export const importAllData = (json: string): string[] => {
   return imported;
 };
 
-export const PHASES_EXPORT = PHASES;

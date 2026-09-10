@@ -2,20 +2,37 @@
 // TrainRight Health — training types
 // ============================================================
 
-export type DayKey = 'mon' | 'tue' | 'thu' | 'sat';
+/**
+ * The five sessions of Garage Block 16, trained in this order:
+ * Push → Pull → Legs → Upper → Lower.
+ */
+export type SessionKey = 'push' | 'pull' | 'legs' | 'upper' | 'lower';
+
+/**
+ * Day keys from the calendar-driven 4-day era (Calisthenics Foundation 16).
+ * Retained READ-ONLY so historical logs keep resolving and rendering. The
+ * v1→v2 `health_training_v1` migration rewrites stored logs onto SessionKey,
+ * but a log synced from a device still running the old build can carry one of
+ * these, so every lookup table must keep covering them.
+ */
+export type LegacyDayKey = 'mon' | 'tue' | 'thu' | 'sat';
+
+/** Storage-tolerant union: the five new keys plus the four legacy ones. */
+export type DayKey = SessionKey | LegacyDayKey;
+
 export type Readiness = 'green' | 'yellow' | 'red';
 
 /**
- * Rotation-model session labels used from Phase 2 onward. A=Lower+Core,
- * B=Pull+Rehab, C=Push+Core, D=Hinge+Skills. The schedule rotates A->B->C->D
- * regardless of weekday — `DayKey` is preserved purely as a stable storage
- * key for legacy logs from the calendar-driven era.
+ * Rotation-model session labels. A=Push, B=Pull, C=Legs, D=Upper, E=Lower.
+ * The schedule rotates A->B->C->D->E regardless of weekday. Legacy day keys
+ * map into the same space so the rotation never sees an undefined letter.
  */
-export type SessionLetter = 'A' | 'B' | 'C' | 'D';
+export type SessionLetter = 'A' | 'B' | 'C' | 'D' | 'E';
 
 export type ExerciseCategory =
   | 'squat' | 'hinge' | 'lunge' | 'core' | 'row' | 'pullup'
-  | 'bench' | 'dip' | 'press' | 'rehab' | 'skill' | 'mobility' | 'conditioning';
+  | 'bench' | 'dip' | 'press' | 'rehab' | 'skill' | 'mobility' | 'conditioning'
+  | 'isolation' | 'calf';
 
 /**
  * A prerequisite that must be true before the exercise is prescribed.
@@ -46,8 +63,13 @@ export interface ProgramExercise {
   perSide?: boolean;
   equipment: string;
   category: ExerciseCategory;
-  rest: string; // e.g. "90 s"
-  rir?: string; // e.g. "2–3"
+  rest: string; // display, e.g. "90 s" / "2–3 min"
+  /**
+   * Machine-readable rest for the timer. When present the rest timer starts
+   * from THIS exercise's prescription instead of the single global default.
+   */
+  restSeconds?: number;
+  rir?: string; // prescribed reps in reserve, e.g. "2–3"
   cues?: string;
   regression?: string;
   progression?: string;
@@ -93,6 +115,12 @@ export interface ProgramPhase {
 export interface LoggedSet {
   weight: string; // free text — kg, band colour, "BW", box height
   reps: string;
+  /**
+   * Reps in reserve ACTUALLY felt on this set, as free text ("2", "0-1",
+   * "failed"). Distinct from ProgramExercise.rir, which is the prescription.
+   * Optional and additive — older sets simply have no value.
+   */
+  rir?: string;
   done: boolean;
   // ── Optional per-side fields (preserved from legacy TrainRight imports) ──
   // For per-side exercises (single-arm row, dead bug, etc.) the legacy format

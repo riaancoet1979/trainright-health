@@ -1,23 +1,38 @@
 // ============================================================
-// TrainRight Health — 16-week calisthenics-hybrid program
-// Built for Riaan (46, 178 cm, ~81 kg) — 4 days/week
-// Mon: Lower + Core (pistol track)
-// Tue: Pull + Shoulder rehab
-// Thu: Push + Core (dip track)
-// Sat: Hinge + Skills (L-sit) + conditioning
+// TrainRight Health — Garage Block 16
+// 16-week push/pull/legs/upper/lower hypertrophy block — 5 days/week
 //
-// HARD RULES (left shoulder, 7/10 pain overhead + hanging):
-//  - NO overhead pressing anywhere in this program.
-//  - All hanging starts feet-supported; progress only at pain ≤ 2/10.
-//  - Landmine press is the only inclined pressing line, painFreeOnly.
-//  - Handstand work is deferred until pain-free + physio clearance.
-//  - Every session is preceded by 20 min treadmill (logged as cardio).
+//   Push  — chest, shoulders, triceps
+//   Pull  — back, rear delts, biceps
+//   Legs  — quad-led, calves, core
+//   Upper — second dose, lighter and higher rep
+//   Lower — hinge-led, unilateral, carries
+//
+// Every muscle is trained TWICE a week. That is the whole point of the
+// split: the 2025 dose-response evidence says weekly SET VOLUME drives
+// hypertrophy and frequency barely matters once volume is equated — but
+// there is a per-session ceiling (~11 productive sets), so a muscle
+// trained once a week is capped below its useful weekly dose.
+//
+// Equipment: adjustable bench, squat/bench rack, pull-up bar, barbell +
+// plates, EZ bar + plates, dumbbells, 2 kettlebells.
+//
+// CONSTRAINTS (confirmed 2026-09-10):
+//  - No dips anywhere. Triceps volume comes from EZ/DB extension lines.
+//  - Pull-ups are bodyweight only and programmed as CLUSTERS, never to
+//    failure inside a block. See PULLUP_NOTE.
+//  - Unilateral work leads with the LEFT side; the right matches whatever
+//    the left did cleanly, never more.
 // ============================================================
 
-import type { ProgramPhase, DayTypeTargets } from '../types/training';
+import type {
+  ProgramPhase, ProgramDay, ProgramExercise, DayTypeTargets, SessionKey,
+} from '../types/training';
 
-export const PROGRAM_NAME = 'Calisthenics Foundation 16';
-export const TREADMILL_NOTE = '20 min treadmill before every session (easy–moderate, nasal breathing pace).';
+export const PROGRAM_NAME = 'Garage Block 16';
+
+export const SESSION_NOTE =
+  'Five to ten minutes of general warm-up, then two ramp-up sets on the first heavy lift of the day.';
 
 export const WARMUP = [
   'Cat-cow + thoracic rotations ×8',
@@ -25,261 +40,427 @@ export const WARMUP = [
   'Band external rotation ×12 / side',
   'Scap push-up ×10',
   'Deep squat hold 30 s',
-  'Wrist circles + palm lifts ×10',
+  'Two ramp-up sets on the first lift (50% and 75% of working weight)',
 ];
 
-// ── Nutrition targets aligned to the program ──
-// Calibrated for ~5,000 steps/day average activity.
+// ── Nutrition targets ──
+// NOTE: carried over unchanged from the previous 4-day program. A fifth
+// training day shifts weekly energy balance — revisit once the bodyweight
+// trend over 3–4 weeks is visible.
 export const DEFAULT_DAY_TYPE_TARGETS: DayTypeTargets = {
   training: { dailyCalories: 2000, dailyProtein: 160, dailyCarbs: 130, dailyFats: 95 },
   rest: { dailyCalories: 1850, dailyProtein: 160, dailyCarbs: 95, dailyFats: 95 },
 };
 
-/** Lean-gain targets to switch to around week 9 if body fat ~15–16%. */
+/** Lean-gain targets to switch to when body fat is ~15–16%. */
 export const LEAN_GAIN_TARGETS: DayTypeTargets = {
   training: { dailyCalories: 2350, dailyProtein: 160, dailyCarbs: 215, dailyFats: 95 },
   rest: { dailyCalories: 2150, dailyProtein: 160, dailyCarbs: 165, dailyFats: 95 },
 };
 
-/** Daily steps goal — realistic with treadmill sessions. */
-export const DEFAULT_STEPS_GOAL = 5000;
+/** The five sessions, in the order they are trained. */
+export const SESSION_KEYS: SessionKey[] = ['push', 'pull', 'legs', 'upper', 'lower'];
 
-export const TRAINING_DAY_KEYS = ['mon', 'tue', 'thu', 'sat'] as const;
+// ════════════════════════════════════════════════════════════
+// PROGRAMME NOTES — rendered in the app so the reasoning travels with
+// the programme instead of living in a chat log.
+// ════════════════════════════════════════════════════════════
 
-const REHAB_BLOCK = [
+export interface ProgramNote {
+  id: string;
+  title: string;
+  body: string;
+}
+
+export const REST_RULE: ProgramNote = {
+  id: 'rest',
+  title: 'Rest long enough that the next set does not collapse — and not a second longer',
+  body:
+    'The 2024 Bayesian meta-analysis found no further hypertrophy benefit past 90 seconds; the ' +
+    'only band that measurably underperforms is under a minute. Longer rests on the heavy ' +
+    'compounds exist to protect your reps, not because rest itself builds anything. Isolation ' +
+    'work gets 90 s, secondary compounds 2 min, heavy compounds 2–3 min. Ticking a set starts ' +
+    'that exercise’s own rest timer.',
+};
+
+export const RIR_GUIDE: ProgramNote = {
+  id: 'rir',
+  title: 'RIR — reps in reserve',
+  body:
+    'How many more reps you could have done before failing. 2–3 RIR: working, bar still moving ' +
+    'fast. 1–2 RIR: last rep slows noticeably, you would get one more, maybe. 0–1 RIR: last rep ' +
+    'is a grind. 0 RIR is failure. Most people overestimate how many reps they have left — it ' +
+    'sharpens after a few weeks. Never take a heavy barbell lift to failure while training alone.',
+};
+
+export const PROGRESSION_RULE: ProgramNote = {
+  id: 'progression',
+  title: 'Double progression',
+  body:
+    'Stay at the same weight until every set hits the TOP of its rep range at the target RIR. ' +
+    'Then add weight and drop back to the bottom of the range: 2.5 kg on upper-body lifts, 5 kg ' +
+    'on squats, RDLs and hip thrusts. Two sessions with no rep added is a stall, not a bad day — ' +
+    'drop the load 10% and build back. If the same lift stalls twice in one block, swap it for ' +
+    'its substitute rather than fighting it.',
+};
+
+export const EFFORT_RULE: ProgramNote = {
+  id: 'effort',
+  title: 'Rep range matters less than effort',
+  body:
+    'Anything from 5 to 30 reps builds muscle at roughly the same rate provided the set finishes ' +
+    'close to failure. So pick the rep range by what is safe to load, and control intensity with ' +
+    'RIR rather than the rep count. That is why heavy compounds sit at 5–8 and isolation work at ' +
+    '12–25 — the loading differs, not the growth.',
+};
+
+export const PULLUP_NOTE: ProgramNote = {
+  id: 'pullups',
+  title: 'Pull-ups: four reps is a strength ceiling, not a volume tool',
+  body:
+    'At a four-rep max, sets to failure buy a lot of fatigue for very little total work — maybe ' +
+    'twelve hard reps a session, every one under high shoulder load. Clusters solve this: five ' +
+    'sets of two or three, each stopping well short of failure, gets the same reps at a fraction ' +
+    'of the joint cost and adds reps faster because you practise the movement fresh every set. ' +
+    'Never take a pull-up set to failure during a block. When 5×3 feels easy, go to 5×4. Retest ' +
+    'a true max only in the deload weeks — 6, 12 and 16. Barbell rows and chest-supported rows ' +
+    'carry the back volume in the meantime.',
+};
+
+export const LOGGING_RULE: ProgramNote = {
+  id: 'logging',
+  title: 'Log weight × reps × RIR for every set',
+  body:
+    'Without last week’s numbers, double progression is guesswork — and guesswork is how five ' +
+    'days a week turns into maintenance. The app shows last session’s sets under each exercise: ' +
+    'beat them or match them, and write down why when you cannot.',
+};
+
+export const PROGRAM_NOTES: ProgramNote[] = [
+  REST_RULE, RIR_GUIDE, PROGRESSION_RULE, EFFORT_RULE, PULLUP_NOTE, LOGGING_RULE,
+];
+
+/** Weekly set volume this split delivers, against the target range. */
+export interface VolumeRow {
+  muscle: string;
+  direct: number;
+  fractional: number;
+  targetLow: number;
+  targetHigh: number;
+}
+
+export const WEEKLY_VOLUME: VolumeRow[] = [
+  { muscle: 'Back', direct: 17, fractional: 19, targetLow: 14, targetHigh: 20 },
+  { muscle: 'Chest', direct: 13, fractional: 13, targetLow: 12, targetHigh: 16 },
+  { muscle: 'Quads', direct: 12, fractional: 14, targetLow: 12, targetHigh: 16 },
+  { muscle: 'Hams & glutes', direct: 10, fractional: 13, targetLow: 10, targetHigh: 14 },
+  { muscle: 'Side delts', direct: 8, fractional: 12, targetLow: 10, targetHigh: 16 },
+  { muscle: 'Calves', direct: 8, fractional: 8, targetLow: 8, targetHigh: 12 },
+  { muscle: 'Triceps', direct: 7, fractional: 12, targetLow: 8, targetHigh: 14 },
+  { muscle: 'Biceps', direct: 5, fractional: 11, targetLow: 8, targetHigh: 12 },
+  { muscle: 'Rear delts', direct: 3, fractional: 7, targetLow: 6, targetHigh: 10 },
+  { muscle: 'Core', direct: 5, fractional: 7, targetLow: 6, targetHigh: 10 },
+];
+
+export const VOLUME_NOTE =
+  'Indirect sets count as half. A barbell row is a full set for back and half a set for biceps — ' +
+  'that half-counting method predicted real-world growth better than any other in the 2025 ' +
+  'dose-response analysis, which is why arms get no dedicated day here and still land in range.';
+
+/** Swaps to reach for when a lift bothers a joint or stalls twice. */
+export interface Swap { from: string; to: string }
+
+export const SWAPS: Swap[] = [
+  { from: 'Barbell Overhead Press', to: 'Seated dumbbell press, neutral grip, left arm leading.' },
+  { from: 'Barbell Bench Press', to: 'Flat dumbbell press — the free path lets each shoulder find its own groove.' },
+  { from: 'Dumbbell Pullover', to: 'Straight-arm kettlebell pullover with a shorter range, or drop it and add a set of rows.' },
+  { from: 'Hanging Leg Raise', to: 'Lying leg raise or bench knee tuck — no hanging load on the shoulder.' },
+  { from: 'Barbell Hip Thrust', to: 'Kettlebell swings, 4 × 15, or single-leg glute bridges off the bench.' },
+  { from: 'Front Squat', to: 'Goblet squat with the heavier kettlebell, higher reps.' },
+];
+
+// ════════════════════════════════════════════════════════════
+// THE FIVE SESSIONS
+//
+// Defined once, then derived per block with block-specific set counts.
+// Hand-writing 30 near-identical day objects is how programmes drift out
+// of sync with themselves.
+// ════════════════════════════════════════════════════════════
+
+type Ex = ProgramExercise;
+
+const PUSH: Ex[] = [
   {
-    id: 'band_pull_apart', name: 'Band Pull-Aparts', sets: 3, repsSpec: '×15–20',
-    equipment: 'Band', category: 'rehab' as const, rest: '45 s',
-    cues: 'Squeeze shoulder blades, no shrug.',
+    id: 'bb_bench', name: 'Barbell Bench Press', sets: 4, repsSpec: '5–8',
+    equipment: 'Barbell + rack', category: 'bench', rest: '2–3 min', restSeconds: 150, rir: '2–3',
+    cues: 'Your heaviest press of the week. Touch the same spot every rep and keep the elbows tucked to about 60°.',
+    progression: '+2.5 kg when all sets hit 8 at 2 RIR',
   },
   {
-    id: 'band_ext_rot', name: 'Band External Rotation', sets: 3, repsSpec: '×15 / side',
-    perSide: true, equipment: 'Band', category: 'rehab' as const, rest: '45 s', leftFocus: true,
-    cues: 'Elbow pinned to ribs. Slow. Extra set left side.',
+    id: 'bb_ohp', name: 'Barbell Overhead Press', sets: 3, repsSpec: '6–10',
+    equipment: 'Barbell + rack', category: 'press', rest: '2–3 min', restSeconds: 150, rir: '2',
+    cues: 'Out of the rack, standing. Never grind the last rep — if the bar slows badly, rack it and call the set.',
+    regression: 'Seated DB press, neutral grip, left arm leading',
+  },
+  {
+    id: 'incline_db_press', name: 'Incline Dumbbell Press', sets: 3, repsSpec: '8–12',
+    equipment: 'Dumbbells + bench', category: 'bench', rest: '2 min', restSeconds: 120, rir: '1–2',
+    leftFocus: true,
+    cues: 'Bench at 30°. Left arm sets the pace — match the right to whatever the left can do cleanly.',
+  },
+  {
+    id: 'db_lateral', name: 'Dumbbell Lateral Raise', sets: 4, repsSpec: '12–20',
+    equipment: 'Dumbbells', category: 'isolation', rest: '90 s', restSeconds: 90, rir: '0–1',
+    cues: 'Light and strict. This is where side-delt width comes from — pressing alone will not build it.',
+  },
+  {
+    id: 'ez_skullcrusher', name: 'EZ-Bar Skullcrusher', sets: 3, repsSpec: '10–15',
+    equipment: 'EZ bar + bench', category: 'isolation', rest: '90 s', restSeconds: 90, rir: '1',
+    cues: 'Lower behind the forehead, not to it. Elbows stay pointed at the ceiling.',
+  },
+  {
+    id: 'db_oh_ext', name: 'Dumbbell Overhead Triceps Extension', sets: 2, repsSpec: '12–20',
+    equipment: 'Dumbbell + bench', category: 'isolation', rest: '90 s', restSeconds: 90, rir: '0–1',
+    cues: 'Seated, one dumbbell in both hands. Full stretch at the bottom — that is the point of doing it overhead.',
   },
 ];
 
+const PULL: Ex[] = [
+  {
+    id: 'pullup_cluster', name: 'Pull-up — clusters', sets: 5, repsSpec: '2–3',
+    equipment: 'Pull-up bar', category: 'pullup', rest: '90 s', restSeconds: 90, rir: 'never to failure',
+    cues: 'Five short sets well short of failure add reps faster than four sets grinding to four. Read the pull-up note below.',
+    progression: 'When 5×3 feels easy, go to 5×4. Retest a true max only in deload weeks.',
+  },
+  {
+    id: 'bb_row', name: 'Barbell Bent-Over Row', sets: 4, repsSpec: '6–10',
+    equipment: 'Barbell', category: 'row', rest: '2–3 min', restSeconds: 150, rir: '2',
+    cues: 'Torso around 45°, pull to the belly button. This is the main back builder — load it seriously.',
+    progression: '+2.5 kg when all sets hit 10 at 2 RIR',
+  },
+  {
+    id: 'sa_db_row', name: 'Single-Arm Dumbbell Row', sets: 3, repsSpec: '10–15 / side',
+    perSide: true, leftFocus: true,
+    equipment: 'Dumbbell + bench', category: 'row', rest: '2 min', restSeconds: 120, rir: '1',
+    cues: 'Hand and knee on the bench. Left side first, and the right side gets the same reps — not more.',
+  },
+  {
+    id: 'db_pullover', name: 'Dumbbell Pullover', sets: 2, repsSpec: '12–15',
+    equipment: 'Dumbbell + bench', category: 'row', rest: '90 s', restSeconds: 90, rir: '1',
+    cues: 'Lying across or along the bench. Go only as deep as the shoulder allows without pinching — depth is not the goal here.',
+  },
+  {
+    id: 'rear_delt_flye', name: 'Rear-Delt Dumbbell Flye', sets: 3, repsSpec: '15–20',
+    equipment: 'Dumbbells + bench', category: 'isolation', rest: '90 s', restSeconds: 90, rir: '0–1',
+    cues: 'Chest down on the incline bench. Rear delts are the cheapest shoulder insurance in the programme — do not skip them.',
+  },
+  {
+    id: 'ez_curl', name: 'EZ-Bar Curl', sets: 3, repsSpec: '8–12',
+    equipment: 'EZ bar', category: 'isolation', rest: '90 s', restSeconds: 90, rir: '1',
+    cues: 'Elbows pinned to the ribs. No swing — if the hips move, the weight is wrong.',
+  },
+];
+
+const LEGS: Ex[] = [
+  {
+    id: 'back_squat', name: 'Back Squat', sets: 4, repsSpec: '5–8',
+    equipment: 'Barbell + rack', category: 'squat', rest: '2–3 min', restSeconds: 180, rir: '2–3',
+    cues: 'Safety pins set at your bottom position, every set, no exceptions when you are training alone.',
+    progression: '+5 kg when all sets hit 8 at 2 RIR',
+  },
+  {
+    id: 'rdl', name: 'Romanian Deadlift', sets: 3, repsSpec: '8–12',
+    equipment: 'Barbell', category: 'hinge', rest: '2–3 min', restSeconds: 150, rir: '2',
+    cues: 'Stop where the hamstring stretch runs out, not where the plates touch the floor.',
+    progression: '+5 kg when all sets hit 12 at 2 RIR',
+  },
+  {
+    id: 'bulgarian_split_squat', name: 'Bulgarian Split Squat', sets: 3, repsSpec: '8–12 / leg',
+    perSide: true, leftFocus: true,
+    equipment: 'Dumbbells + bench', category: 'lunge', rest: '90 s', restSeconds: 90, rir: '1–2',
+    cues: 'Rear foot on the bench, dumbbells at your sides. Brutal, and the single best quad and glute builder you own without machines.',
+  },
+  {
+    id: 'standing_calf_raise', name: 'Standing Barbell Calf Raise', sets: 4, repsSpec: '12–20',
+    equipment: 'Barbell + rack', category: 'calf', rest: '90 s', restSeconds: 90, rir: '0–1',
+    cues: 'Bar in the rack, toes on a plate for a deeper stretch. Two-second pause at the bottom.',
+  },
+  {
+    id: 'hanging_leg_raise', name: 'Hanging Leg Raise', sets: 3, repsSpec: '10–15',
+    equipment: 'Pull-up bar', category: 'core', rest: '90 s', restSeconds: 90, rir: '1',
+    cues: 'If hanging bothers the shoulder, swap to a lying leg raise on the bench. Same job, no traction on the joint.',
+    regression: 'Lying leg raise or bench knee tuck',
+  },
+];
+
+const UPPER: Ex[] = [
+  {
+    id: 'incline_bb_press', name: 'Incline Barbell Press', sets: 4, repsSpec: '8–12',
+    equipment: 'Barbell + rack + bench', category: 'bench', rest: '2 min', restSeconds: 120, rir: '2',
+    cues: 'Bench at 30° in the rack. Higher reps than Push day by design — this is the second dose, not a repeat of it.',
+  },
+  {
+    id: 'chest_supported_row', name: 'Chest-Supported Dumbbell Row', sets: 4, repsSpec: '10–15',
+    equipment: 'Dumbbells + incline bench', category: 'row', rest: '2 min', restSeconds: 120, rir: '1',
+    cues: 'Face-down on the incline bench. The chest support takes the lower back out of it entirely, so you can push these hard.',
+  },
+  {
+    id: 'db_flye', name: 'Dumbbell Flye', sets: 2, repsSpec: '15–20',
+    equipment: 'Dumbbells + bench', category: 'isolation', rest: '90 s', restSeconds: 90, rir: '0–1',
+    cues: 'Slight incline, soft elbows, controlled. Go by stretch, not by depth.',
+  },
+  {
+    id: 'db_lateral_light', name: 'Dumbbell Lateral Raise', sets: 4, repsSpec: '15–25',
+    equipment: 'Dumbbells', category: 'isolation', rest: '90 s', restSeconds: 90, rir: '0–1',
+    cues: 'Lighter than Push day, more reps. Side delts recover fast and tolerate this frequency well.',
+  },
+  {
+    id: 'db_hammer_curl', name: 'Dumbbell Hammer Curl', sets: 2, repsSpec: '10–15',
+    equipment: 'Dumbbells', category: 'isolation', rest: '90 s', restSeconds: 90, rir: '1',
+    cues: 'Neutral grip hits the brachialis, which is what actually pushes the bicep up.',
+  },
+  {
+    id: 'ez_oh_ext', name: 'EZ-Bar Overhead Triceps Extension', sets: 2, repsSpec: '12–20',
+    equipment: 'EZ bar + bench', category: 'isolation', rest: '90 s', restSeconds: 90, rir: '0–1',
+    cues: 'Seated with back support. Last thing in the session, take it close.',
+  },
+];
+
+const LOWER: Ex[] = [
+  {
+    id: 'front_squat', name: 'Front Squat', sets: 3, repsSpec: '6–10',
+    equipment: 'Barbell + rack', category: 'squat', rest: '2–3 min', restSeconds: 150, rir: '2',
+    cues: 'Different enough from Legs-day back squat to count as a second quad stimulus rather than a repeat. Cross-arm grip is fine.',
+    regression: 'Goblet squat with the heavier kettlebell, higher reps',
+  },
+  {
+    id: 'hip_thrust', name: 'Barbell Hip Thrust', sets: 4, repsSpec: '8–12',
+    equipment: 'Barbell + bench', category: 'hinge', rest: '2 min', restSeconds: 120, rir: '1–2',
+    cues: 'Shoulder blades on the bench edge, a folded towel under the bar. Pause a full second at the top of every rep.',
+    regression: 'Kettlebell swings 4×15, or single-leg glute bridges off the bench',
+  },
+  {
+    id: 'sl_rdl', name: 'Single-Leg Romanian Deadlift', sets: 3, repsSpec: '10–12 / leg',
+    perSide: true, leftFocus: true,
+    equipment: 'Kettlebell', category: 'hinge', rest: '90 s', restSeconds: 90, rir: '1–2',
+    cues: 'Kettlebell in the opposite hand. Left leg leads. Balance is part of the exercise — do not chase load here.',
+  },
+  {
+    id: 'goblet_walking_lunge', name: 'Kettlebell Goblet Walking Lunge', sets: 2, repsSpec: '10–12 / leg',
+    perSide: true,
+    equipment: 'Kettlebell', category: 'lunge', rest: '90 s', restSeconds: 90, rir: '1–2',
+    cues: 'Short garage? Reverse lunges in place work just as well. Same reps either way.',
+  },
+  {
+    id: 'sl_calf_raise', name: 'Single-Leg Dumbbell Calf Raise', sets: 4, repsSpec: '12–20 / leg',
+    perSide: true,
+    equipment: 'Dumbbell', category: 'calf', rest: '90 s', restSeconds: 90, rir: '0–1',
+    cues: 'Toes on a plate, dumbbell in the same-side hand, free hand on the rack for balance.',
+  },
+  {
+    id: 'suitcase_carry', name: 'Kettlebell Suitcase Carry', sets: 2, repsSpec: '40 m / side',
+    perSide: true, timed: true,
+    equipment: 'Kettlebell', category: 'core', rest: '90 s', restSeconds: 90, rir: 'hard but upright',
+    cues: 'One kettlebell, ribs down, do not lean. Trains the obliques and the grip at once, and finishes the week honestly.',
+  },
+];
+
+interface DaySpec {
+  key: SessionKey;
+  label: string;
+  goal: string;
+  exercises: Ex[];
+}
+
+const DAY_SPECS: DaySpec[] = [
+  { key: 'push', label: 'Push', goal: 'Chest, shoulders and triceps — the heaviest pressing of the week.', exercises: PUSH },
+  { key: 'pull', label: 'Pull', goal: 'Back, rear delts and biceps. Pull-ups as clusters; rows carry the volume.', exercises: PULL },
+  { key: 'legs', label: 'Legs', goal: 'Quad-led, plus calves and core. Squat heavy, hinge second.', exercises: LEGS },
+  { key: 'upper', label: 'Upper', goal: 'Second dose for the upper body — lighter, higher rep, not a repeat of Push.', exercises: UPPER },
+  { key: 'lower', label: 'Lower + Core', goal: 'Hinge-led, unilateral work and carries. Posterior chain and single-leg control.', exercises: LOWER },
+];
+
+/**
+ * Build the five days for a block.
+ *  - `extraSets`: how many of the day's LEADING exercises gain a set
+ *    (Block A = 0, Block B = 1, Block C = 2).
+ *  - `deload`: cap every exercise at 2 sets and rewrite the RIR guidance.
+ */
+const buildDays = (opts: { extraSets: number; deload?: boolean }): ProgramDay[] =>
+  DAY_SPECS.map((spec) => ({
+    key: spec.key,
+    label: spec.label,
+    goal: opts.deload
+      ? `${spec.goal} Deload — 2 sets per exercise at ~60% of your last working load.`
+      : spec.goal,
+    exercises: spec.exercises.map((ex, i): ProgramExercise => ({
+      ...ex,
+      sets: opts.deload ? 2 : ex.sets + (i < opts.extraSets ? 1 : 0),
+      rir: opts.deload ? '4–5' : ex.rir,
+      cues: opts.deload
+        ? `${ex.cues ?? ''} Deload week — leave 4–5 reps in the tank; this is recovery, not training.`.trim()
+        : ex.cues,
+    })),
+  }));
+
 export const PHASES: ProgramPhase[] = [
-  // ────────────────────────────────────────────────────────
-  // PHASE 1 — WEEK 1: ASSESSMENT & TECHNIQUE
-  // Everything submaximal: stop with 2–3 clean reps in reserve.
-  // ────────────────────────────────────────────────────────
   {
-    phase: 1, weeks: [1], label: 'Phase 1 — Assessment (Week 1)',
-    focus: 'Baseline tests, technique, shoulder tolerance mapping. Nothing to failure.',
-    days: [
-      {
-        key: 'mon', label: 'Lower + Core — baseline', goal: 'Squat pattern quality, single-leg baseline, core endurance.',
-        exercises: [
-          { id: 'goblet_squat', name: 'Goblet Squat', sets: 3, repsSpec: '×10', equipment: 'DB/KB', category: 'squat', rest: '90 s', rir: '3', cues: 'Heels down, chest tall, full depth if comfortable.', regression: 'Box squat', progression: 'Heavier DB' },
-          { id: 'box_pistol', name: 'Box Pistol (high box)', sets: 2, repsSpec: '×5 / side', perSide: true, equipment: 'Box/Bench', category: 'skill', rest: '90 s', rir: '3', cues: 'Sit back slow, stand without rocking.', regression: 'Higher box', progression: 'Lower box' },
-          { id: 'sl_glute_bridge', name: 'Single-Leg Glute Bridge', sets: 2, repsSpec: '×10 / side', perSide: true, equipment: 'BW', category: 'hinge', rest: '60 s', rir: '3' },
-          { id: 'hollow_hold', name: 'Hollow Hold', sets: 3, repsSpec: '15–20 s', timed: true, equipment: 'BW', category: 'core', rest: '60 s', cues: 'Lower back pressed into floor.' },
-          { id: 'plank_hold', name: 'Plank', sets: 2, repsSpec: 'to RIR ~15 s', timed: true, equipment: 'BW', category: 'core', rest: '60 s' },
-        ],
-      },
-      {
-        key: 'tue', label: 'Pull + Shoulder rehab — baseline', goal: 'Vertical pull baseline, pain-free hanging tolerance, scap control.',
-        exercises: [
-          { id: 'band_pullup', name: 'Band-Assisted Pull-Up', sets: 3, repsSpec: '×4–5', equipment: 'Band + Bar', category: 'pullup', rest: '2 min', rir: '2–3', cues: 'Full hang to chin over. Control down.', regression: 'Foot on box assist', progression: 'More reps' },
-          { id: 'inverted_row', name: 'Inverted Row (bar in rack)', sets: 3, repsSpec: '×8', equipment: 'Barbell + Rack', category: 'row', rest: '90 s', rir: '2–3', cues: 'Body rigid, pull chest to bar.', regression: 'Higher bar', progression: 'Lower bar / feet elevated' },
-          { id: 'scap_pull_supported', name: 'Scapular Pulls (feet supported)', sets: 3, repsSpec: '×6', equipment: 'Bar + Box', category: 'pullup', rest: '60 s', painFreeOnly: true, cues: 'Feet take weight. Shrug down, no elbow bend. STOP at any shoulder pain.' },
-          ...REHAB_BLOCK,
-        ],
-      },
-      {
-        key: 'thu', label: 'Push + Core — baseline', goal: 'Push-up and dip baseline, bench reference, shoulder-safe pressing map.',
-        exercises: [
-          { id: 'pushup', name: 'Push-Up (test)', sets: 2, repsSpec: 'AMRAP −2', equipment: 'BW', category: 'bench', rest: '2 min', rir: '2', cues: 'Stop 2 clean reps before failure.' },
-          { id: 'db_bench', name: 'Flat DB Bench Press', sets: 3, repsSpec: '×10', equipment: 'DB + Bench', category: 'bench', rest: '90 s', rir: '3', cues: 'Moderate weight, 45° elbows.' },
-          { id: 'dips', name: 'Dips (test)', sets: 2, repsSpec: '×4–6', equipment: 'Bars', category: 'dip', rest: '2 min', rir: '2–3', painFreeOnly: true, cues: 'Shallow depth first. STOP on any shoulder pain.', regression: 'Bench dips, feet on floor' },
-          { id: 'dead_bug', name: 'Dead Bug', sets: 3, repsSpec: '×10 / side', perSide: true, equipment: 'BW', category: 'core', rest: '60 s' },
-        ],
-      },
-      {
-        key: 'sat', label: 'Hinge + Skills — baseline', goal: 'Hinge technique, L-sit baseline, mobility screen.',
-        exercises: [
-          { id: 'kb_swing', name: 'KB Swing (technique)', sets: 3, repsSpec: '×12', equipment: 'KB', category: 'hinge', rest: '90 s', rir: '3', cues: 'Hips snap, arms relaxed.' },
-          { id: 'db_rdl', name: 'DB Romanian Deadlift', sets: 3, repsSpec: '×10', equipment: 'DB', category: 'hinge', rest: '90 s', rir: '3' },
-          { id: 'tuck_lsit', name: 'Tuck L-Sit Support Hold (test)', sets: 3, repsSpec: '8–12 s', timed: true, equipment: 'Dip bars', category: 'skill', rest: '90 s', cues: 'Push bars away, knees to chest. Shoulders down.', regression: 'Support hold, feet on floor' },
-          { id: 'side_plank', name: 'Side Plank', sets: 2, repsSpec: '20 s / side', perSide: true, timed: true, equipment: 'BW', category: 'core', rest: '60 s' },
-          { id: 'mobility_screen', name: 'Mobility screen: deep squat, wrist ext., shoulder ROM', sets: 1, repsSpec: '5 min', timed: true, equipment: 'BW', category: 'mobility', rest: '—', cues: 'Note restrictions in session notes.' },
-        ],
-      },
-    ],
+    phase: 1,
+    weeks: [1, 2, 3, 4, 5],
+    label: 'Block A — Accumulate (Weeks 1–5)',
+    focus:
+      'Start at the bottom of every rep range. Add one rep per set per week. Sit at 2–3 reps in ' +
+      'reserve for weeks 1–2 and drift to 1–2 by week 5.',
+    days: buildDays({ extraSets: 0 }),
   },
-
-  // ────────────────────────────────────────────────────────
-  // PHASE 2 — WEEKS 2–5: FOUNDATION
-  // Calibrated 2026-06-10 after assessment week. Cues updated 2026-06-28
-  // (Week 5 coaching review — shoulder at 5/10, hang milestone hit). Phase-2 sessions are
-  // labelled A/B/C/D to match the rotation model (see SESSION_LETTER
-  // map below) — internal day keys (mon/tue/thu/sat) are preserved
-  // for backward compatibility with logs from the calendar-driven era.
-  // ────────────────────────────────────────────────────────
   {
-    phase: 2, weeks: [2, 3, 4, 5], label: 'Phase 2 — Foundation (Weeks 2–5)',
-    focus: 'Scap control, pain-free hanging build, push/pull balance, pistol + L-sit groundwork. Double progression: hit top reps on all sets → progress.',
-    days: [
-      {
-        key: 'mon', label: 'A — Lower + Core', goal: 'Build squat strength and single-leg control.',
-        exercises: [
-          { id: 'goblet_squat', name: 'Goblet Squat', sets: 4, repsSpec: '×8–12', equipment: 'DB/KB', category: 'squat', rest: '90 s', rir: '2–3', cues: 'Week 5 target: 32–36 kg. Progressed 10 kg → 20 kg → 30 kg through Phase 2. At 4×12 clean → switch to barbell back squat @40 kg.', progression: 'At 4×12 clean → barbell back squat (Phase 3)' },
-          { id: 'box_pistol', name: 'Box Pistol', sets: 3, repsSpec: '×6 / side', perSide: true, equipment: 'Box/Bench', category: 'skill', rest: '90 s', rir: '2', progression: 'Lower the box once all sets clean.', yellowSkip: true },
-          { id: 'sl_glute_bridge', name: 'Single-Leg Glute Bridge', sets: 3, repsSpec: '×12 / side', perSide: true, equipment: 'BW', category: 'hinge', rest: '60 s', rir: '2', cues: '2 s pause at top.' },
-          { id: 'hollow_rock', name: 'Hollow Rocks', sets: 3, repsSpec: '×12–15', equipment: 'BW', category: 'core', rest: '60 s', cues: 'Earned: held 3×45 s in assessment. Lower back stays pressed down.', regression: 'Hollow hold 20–30 s (id: hollow_hold)' },
-          { id: 'reverse_lunge', name: 'Reverse Lunge (DB)', sets: 3, repsSpec: '×8 / side', perSide: true, equipment: 'DB', category: 'lunge', rest: '90 s', rir: '2', cues: '12 kg DBs. DO NOT SKIP — this is the pistol-squat prerequisite and has been skipped every week. Include it before extra arm work.', yellowSkip: true },
-        ],
-      },
-      {
-        key: 'tue', label: 'B — Pull + Shoulder rehab', goal: 'Reduce pull-up assistance, build pain-free hang tolerance.',
-        exercises: [
-          { id: 'band_pullup', name: 'Band-Assisted Pull-Up', sets: 4, repsSpec: '×5–8', equipment: 'Band + Bar', category: 'pullup', rest: '2 min', rir: '2', progression: 'At 4×8 → slow 3 s eccentric, then less band stretch' },
-          { id: 'inverted_row', name: 'Inverted Row', sets: 4, repsSpec: '×8–12', equipment: 'Barbell + Rack', category: 'row', rest: '90 s', rir: '2', progression: 'Lower bar → feet on box' },
-          { id: 'scap_pull_supported', name: 'Scapular Pulls (feet supported)', sets: 2, repsSpec: '×5', equipment: 'Bar + Box', category: 'pullup', rest: '60 s', painFreeOnly: true, cues: 'REGRESSED: pain in week 1. Maximum foot support, partial ROM, only at pain ≤2/10 — otherwise do band scap depressions instead.', progression: 'Less foot support ONLY at pain ≤ 2/10' },
-          { id: 'dead_hang_supported', name: 'Dead Hang (unsupported — milestone hit!)', sets: 3, repsSpec: '28–35 s', timed: true, equipment: 'Bar', category: 'pullup', rest: '90 s', painFreeOnly: true, cues: '✅ MILESTONE: Hit 30 s unsupported on 2026-06-22. Target 30–35 s all sets. ≥30 s pain-free = the gate to start strict pull-up attempts in Phase 3. Stop above 2/10.' },
-          { id: 'single_arm_row', name: 'Single-Arm DB Row', sets: 3, repsSpec: '×10 / side', perSide: true, equipment: 'DB', category: 'row', rest: '90 s', rir: '2', leftFocus: true, cues: '22–24 kg by Week 5 — progressed from 10 kg → 20 kg. Extra set on left side.', yellowSkip: true },
-          ...REHAB_BLOCK,
-        ],
-      },
-      {
-        key: 'thu', label: 'C — Push + Core', goal: 'Press strength + dip volume, shoulder-safe lines only.',
-        exercises: [
-          { id: 'db_bench', name: 'Flat DB Bench Press', sets: 4, repsSpec: '×8–10', equipment: 'DB + Bench', category: 'bench', rest: '2 min', rir: '2', cues: 'Pick a weight where 10 reps = RIR 2 (~15–17.5 kg/hand to start).' },
-          { id: 'dips', name: 'Dips', sets: 3, repsSpec: '×5–8', equipment: 'Bars', category: 'dip', rest: '2 min', rir: '2', painFreeOnly: true, cues: 'Depth only as pain-free. Build reps before depth. +1 rep per session while ≤2/10.', regression: 'Bench dips' },
-          { id: 'pushup', name: 'Push-Up', sets: 3, repsSpec: '×8–15', equipment: 'BW', category: 'bench', rest: '90 s', rir: '2', progression: 'At 3×15 → feet elevated' },
-          { id: 'landmine_press', name: 'Landmine Press', sets: 3, repsSpec: '×8 / side', perSide: true, equipment: 'Landmine', category: 'press', rest: '90 s', rir: '2', painFreeOnly: true, leftFocus: true, cues: 'Add 2.5–5 kg — bar-only ×15 was pain-free in week 1. Stop on any pain.', yellowSkip: true },
-          { id: 'cg_floor_press', name: 'Close-Grip Floor Press (triceps)', sets: 3, repsSpec: '×10–12', equipment: 'Barbell', category: 'bench', rest: '90 s', rir: '2', cues: 'Shoulder-safe triceps line. ⛔ REPLACES skull crushers and all behind-head/overhead extensions — shoulder escalated to 5/10 from those. Do NOT skip this. Elbows at 45° on the floor, bar lowers to chest.' },
-          { id: 'dead_bug', name: 'Dead Bug', sets: 3, repsSpec: '×10 / side', perSide: true, equipment: 'BW', category: 'core', rest: '60 s' },
-        ],
-      },
-      {
-        key: 'sat', label: 'D — Hinge + Skills + Conditioning', goal: 'Posterior chain, L-sit build, engine work.',
-        exercises: [
-          { id: 'kb_swing', name: 'KB Swing', sets: 4, repsSpec: '×15', equipment: 'KB', category: 'hinge', rest: '90 s', rir: '2', cues: '⬆ 16 kg — jump from 10 kg now. 10 kg has been used for 4 weeks and is too light. Hip snap, arms passive.' },
-          { id: 'db_rdl', name: 'DB/BB Romanian Deadlift', sets: 4, repsSpec: '×8–10', equipment: 'DB/Barbell', category: 'hinge', rest: '2 min', rir: '2', cues: 'Barbell RDL 45–48 kg. Hit 4×12@45 kg on 2026-06-28 — hold 45 kg or push to 48 kg for 4×8–10.' },
-          { id: 'tuck_lsit', name: 'Tuck L-Sit Hold', sets: 4, repsSpec: '10–15 s', timed: true, equipment: 'Dip bars', category: 'skill', rest: '90 s', cues: 'Strong in week 1 (4×20 s) — now flatten back, lift knees higher; quality over duration.', progression: 'At 4×15 s → flatten back, lift knees higher', yellowSkip: true },
-          { id: 'side_plank', name: 'Side Plank', sets: 3, repsSpec: '25–30 s / side', perSide: true, timed: true, equipment: 'BW', category: 'core', rest: '60 s' },
-          { id: 'mobility_block', name: 'Mobility: deep squat, thoracic, wrist prep', sets: 1, repsSpec: '8 min', timed: true, equipment: 'BW', category: 'mobility', rest: '—' },
-          { id: 'dragon_flag', name: 'Dragon Flag (optional finisher)', sets: 2, repsSpec: '×5 slow', equipment: 'Bench', category: 'core', rest: '90 s', painFreeOnly: true, yellowSkip: true, cues: 'Only at shoulder ≤2/10. Slow eccentrics, no arch.' },
-        ],
-      },
-    ],
+    phase: 2,
+    weeks: [6],
+    label: 'Week 6 — Deload',
+    focus:
+      'Same exercises, 2 sets each, 60% of your week-5 loads, 4–5 reps in reserve. Retest your ' +
+      'max pull-up at the end of the week.',
+    days: buildDays({ extraSets: 0, deload: true }),
   },
-
-  // ────────────────────────────────────────────────────────
-  // PHASE 3 — WEEKS 6–11: STRENGTH & SKILL
-  // ────────────────────────────────────────────────────────
   {
-    phase: 3, weeks: [6, 7, 8, 9, 10, 11], label: 'Phase 3 — Strength & Skill (Weeks 6–11)',
-    focus: 'Heavier lower body, pull-up assistance to zero, dip loading, L-sit advanced tuck, pistol to low box. First strict pull-up attempts ~week 9–10 IF hang ≥ 30 s pain-free.',
-    days: [
-      {
-        key: 'mon', label: 'Lower strength + pistol', goal: 'Heavier squat pattern, pistol depth.',
-        exercises: [
-          { id: 'bb_back_squat', name: 'Barbell Back Squat', sets: 4, repsSpec: '×6–8', equipment: 'Barbell + Rack', category: 'squat', rest: '2–3 min', rir: '2', cues: 'You have 2×15 kg plates — stay in 6–8 rep range, add tempo when bar maxed.', regression: 'Goblet squat', progression: '3 s pause squat when plates max out' },
-          { id: 'box_pistol_low', name: 'Pistol to Low Box', sets: 4, repsSpec: '×5 / side', perSide: true, equipment: 'Low box', category: 'skill', rest: '90 s', rir: '2', progression: 'Assisted full pistol (hold rack upright)', yellowSkip: true },
-          { id: 'sl_rdl', name: 'Single-Leg DB RDL', sets: 3, repsSpec: '×8 / side', perSide: true, equipment: 'DB', category: 'hinge', rest: '90 s', rir: '2' },
-          { id: 'hollow_rocks', name: 'Hollow Rocks', sets: 3, repsSpec: '×10–15', equipment: 'BW', category: 'core', rest: '60 s' },
-        ],
-      },
-      {
-        key: 'tue', label: 'Pull-up build + rehab', goal: 'Assistance down, eccentrics in, row strength up.',
-        exercises: [
-          { id: 'band_pullup', name: 'Band Pull-Up (reducing assist)', sets: 5, repsSpec: '×5–8', equipment: 'Band + Bar', category: 'pullup', rest: '2 min', rir: '1–2', progression: 'Wk 9–10: test ONE strict rep if hang ≥ 30 s pain-free' },
-          { id: 'pullup_eccentric', name: 'Pull-Up Eccentric (5 s down)', sets: 3, repsSpec: '×3–5', equipment: 'Bar + Box', category: 'pullup', rest: '2 min', painFreeOnly: true, cues: 'Jump to top from box, lower 5 s. Pain-free only.', yellowSkip: true },
-          { id: 'inverted_row_elev', name: 'Inverted Row (feet elevated)', sets: 4, repsSpec: '×8–12', equipment: 'Barbell + Rack + Box', category: 'row', rest: '90 s', rir: '2' },
-          { id: 'single_arm_row', name: 'Single-Arm DB Row (heavy)', sets: 4, repsSpec: '×8 / side', perSide: true, equipment: 'DB', category: 'row', rest: '90 s', rir: '2', leftFocus: true },
-          ...REHAB_BLOCK,
-        ],
-      },
-      {
-        key: 'thu', label: 'Push strength + dip loading', goal: 'Heavier bench, dips toward weighted.',
-        exercises: [
-          { id: 'db_bench', name: 'Flat DB Bench Press (heavy)', sets: 4, repsSpec: '×6–8', equipment: 'DB + Bench', category: 'bench', rest: '2–3 min', rir: '2' },
-          { id: 'dips', name: 'Dips', sets: 4, repsSpec: '×6–10', equipment: 'Bars', category: 'dip', rest: '2 min', rir: '2', painFreeOnly: true, progression: 'At 4×10 clean → add load (backpack/dip belt)' },
-          { id: 'pushup_decline', name: 'Decline / Archer Push-Up', sets: 3, repsSpec: '×8–12', equipment: 'BW + Box', category: 'bench', rest: '90 s', rir: '2', yellowSkip: true },
-          { id: 'landmine_press', name: 'Landmine Press', sets: 4, repsSpec: '×8 / side', perSide: true, equipment: 'Landmine', category: 'press', rest: '90 s', rir: '2', painFreeOnly: true, leftFocus: true },
-          { id: 'band_antirotation', name: 'Band Anti-Rotation Press', sets: 3, repsSpec: '×10 / side', perSide: true, equipment: 'Band', category: 'core', rest: '60 s' },
-        ],
-      },
-      {
-        key: 'sat', label: 'Hinge + L-sit + engine', goal: 'Heavy hinge, advanced-tuck L-sit, conditioning.',
-        exercises: [
-          { id: 'bb_rdl', name: 'Barbell RDL', sets: 4, repsSpec: '×6–8', equipment: 'Barbell', category: 'hinge', rest: '2–3 min', rir: '2' },
-          { id: 'kb_swing_heavy', name: 'KB Swing (heavier)', sets: 5, repsSpec: '×15', equipment: 'KB', category: 'hinge', rest: '90 s', rir: '2' },
-          { id: 'adv_tuck_lsit', name: 'Advanced Tuck L-Sit', sets: 4, repsSpec: '10–15 s', timed: true, equipment: 'Dip bars', category: 'skill', rest: '90 s', progression: 'At 4×15 s → one leg extended', yellowSkip: true },
-          { id: 'pistol_practice', name: 'Pistol Skill Practice', sets: 3, repsSpec: '×3–5 / side', perSide: true, equipment: 'BW/Rack assist', category: 'skill', rest: '90 s', cues: 'Quality only. Stop when form degrades.', yellowSkip: true },
-          { id: 'conditioning_finisher', name: 'Finisher: KB swing intervals 20 s on / 40 s off', sets: 1, repsSpec: '6–8 min', timed: true, equipment: 'KB', category: 'conditioning', rest: '—', yellowSkip: true },
-        ],
-      },
-    ],
+    phase: 3,
+    weeks: [7, 8, 9, 10, 11],
+    label: 'Block B — Add a set (Weeks 7–11)',
+    focus:
+      'One extra set on the first exercise of each day. Loads restart 5% below your week-5 top ' +
+      'set, then climb past it. 1–2 reps in reserve throughout.',
+    days: buildDays({ extraSets: 1 }),
   },
-
-  // ────────────────────────────────────────────────────────
-  // PHASE 4 — WEEKS 12–16: INTEGRATION & RETEST
-  // Week 16 = deload + full retest.
-  // ────────────────────────────────────────────────────────
   {
-    phase: 4, weeks: [12, 13, 14, 15, 16], label: 'Phase 4 — Integration (Weeks 12–16)',
-    focus: 'Strict pull-up clusters, weighted dips, full pistols, one-leg → full L-sit. Week 16: deload volume, retest all baselines.',
-    days: [
-      {
-        key: 'mon', label: 'Lower strength + full pistol', goal: 'Consolidate squat strength, full pistol attempts.',
-        exercises: [
-          { id: 'bb_back_squat', name: 'Barbell Back Squat', sets: 5, repsSpec: '×5', equipment: 'Barbell + Rack', category: 'squat', rest: '2–3 min', rir: '2', progression: 'Pause reps / 1.5 reps when plates max out' },
-          { id: 'full_pistol', name: 'Full Pistol (or lowest box)', sets: 5, repsSpec: '×3–5 / side', perSide: true, equipment: 'BW', category: 'skill', rest: '2 min', rir: '1–2', regression: 'Rack-assisted', yellowSkip: true },
-          { id: 'sl_rdl', name: 'Single-Leg DB RDL', sets: 3, repsSpec: '×8 / side', perSide: true, equipment: 'DB', category: 'hinge', rest: '90 s', rir: '2' },
-          { id: 'hollow_rocks', name: 'Hollow Rocks', sets: 3, repsSpec: '×15', equipment: 'BW', category: 'core', rest: '60 s' },
-        ],
-      },
-      {
-        key: 'tue', label: 'Strict pull-ups + rehab', goal: 'Strict reps in clusters, band back-off volume.',
-        exercises: [
-          {
-            id: 'strict_pullup', name: 'Strict Pull-Up Clusters', sets: 5, repsSpec: '×2–5',
-            equipment: 'Bar', category: 'pullup', rest: '2–3 min', rir: '1', painFreeOnly: true,
-            cues: 'Quality singles/doubles beat sloppy fives.', regression: 'Band-assisted',
-            // SAFETY GATE (H-03): Only attempt strict reps after demonstrating
-            // capacity on the band pull-up. If the user has not hit the top of
-            // the band-pullup rep range on both of their last two sessions,
-            // swap to a band_pullup set instead and explain why in the UI.
-            prerequisite: {
-              kind: 'top_of_range_x2',
-              sourceExerciseId: 'band_pullup',
-              description: 'Hit top of band pull-up rep range in 2 consecutive sessions first',
-              fallbackExerciseId: 'band_pullup',
-            },
-          },
-          { id: 'band_pullup', name: 'Band Pull-Up (back-off)', sets: 2, repsSpec: '×8', equipment: 'Band + Bar', category: 'pullup', rest: '90 s', rir: '2' },
-          { id: 'inverted_row_elev', name: 'Inverted Row (feet elevated)', sets: 4, repsSpec: '×10–12', equipment: 'Barbell + Rack + Box', category: 'row', rest: '90 s', rir: '2' },
-          ...REHAB_BLOCK,
-        ],
-      },
-      {
-        key: 'thu', label: 'Weighted dips + press', goal: 'Load the dip, heavy bench, press integrity.',
-        exercises: [
-          { id: 'weighted_dips', name: 'Weighted Dips', sets: 5, repsSpec: '×5–8', equipment: 'Bars + backpack', category: 'dip', rest: '2–3 min', rir: '2', painFreeOnly: true, regression: 'Bodyweight dips' },
-          { id: 'db_bench', name: 'Flat DB Bench Press', sets: 5, repsSpec: '×5–6', equipment: 'DB + Bench', category: 'bench', rest: '2–3 min', rir: '2' },
-          { id: 'archer_pushup', name: 'Archer Push-Up', sets: 3, repsSpec: '×6–10 / side', perSide: true, equipment: 'BW', category: 'bench', rest: '90 s', rir: '2', yellowSkip: true },
-          { id: 'landmine_press', name: 'Landmine Press', sets: 3, repsSpec: '×8 / side', perSide: true, equipment: 'Landmine', category: 'press', rest: '90 s', rir: '2', painFreeOnly: true, leftFocus: true },
-        ],
-      },
-      {
-        key: 'sat', label: 'Hinge + L-sit + retest (wk 16)', goal: 'Full L-sit attempts; week 16 = retest everything.',
-        exercises: [
-          { id: 'bb_rdl', name: 'Barbell RDL', sets: 4, repsSpec: '×6', equipment: 'Barbell', category: 'hinge', rest: '2–3 min', rir: '2' },
-          { id: 'oneleg_lsit', name: 'One-Leg → Full L-Sit', sets: 5, repsSpec: '8–15 s', timed: true, equipment: 'Dip bars', category: 'skill', rest: '90 s', progression: 'Extend both legs as able', yellowSkip: true },
-          { id: 'kb_swing_heavy', name: 'KB Swing', sets: 4, repsSpec: '×15', equipment: 'KB', category: 'hinge', rest: '90 s', rir: '2' },
-          { id: 'side_plank', name: 'Side Plank (loaded)', sets: 3, repsSpec: '30 s / side', perSide: true, timed: true, equipment: 'BW/DB', category: 'core', rest: '60 s' },
-          { id: 'wk16_retest', name: 'WEEK 16 ONLY — Retest: pull-ups, dips, L-sit, pistol, push-ups, hang', sets: 1, repsSpec: 'Replace session', equipment: '—', category: 'skill', rest: '—', cues: 'Deload week: do retests fresh instead of normal session.' },
-        ],
-      },
-    ],
+    phase: 4,
+    weeks: [12],
+    label: 'Week 12 — Deload',
+    focus: 'As week 6. Retest max pull-up.',
+    days: buildDays({ extraSets: 1, deload: true }),
+  },
+  {
+    phase: 5,
+    weeks: [13, 14, 15],
+    label: 'Block C — Peak (Weeks 13–15)',
+    focus:
+      'Extra set on the second exercise too. Isolation work goes to 0–1 reps in reserve; ' +
+      'compounds stay at 2. This is the highest-volume stretch of the block — expect it to feel ' +
+      'like it.',
+    days: buildDays({ extraSets: 2 }),
+  },
+  {
+    phase: 6,
+    weeks: [16],
+    label: 'Week 16 — Deload & retest',
+    focus:
+      'Two sets per exercise at 60%. Then retest a heavy set of five on bench, squat and row, ' +
+      'and your max pull-up. Those numbers set the starting loads for the next block.',
+    days: buildDays({ extraSets: 2, deload: true }),
   },
 ];
 
 export const getPhaseForWeek = (weekNum: number): ProgramPhase => {
   const p = PHASES.find((ph) => ph.weeks.includes(weekNum));
-  return p ?? PHASES[PHASES.length - 1];
+  // Past week 16 the block repeats from its peak phase, not the deload.
+  return p ?? PHASES[PHASES.length - 2];
 };

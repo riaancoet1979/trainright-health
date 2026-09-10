@@ -1,15 +1,18 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { format } from 'date-fns';
-import { Dumbbell, CheckCircle2, Circle, AlertTriangle, Scale, Play, CalendarDays, RotateCcw, X, Sparkles } from 'lucide-react';
+import { Dumbbell, CheckCircle2, Circle, AlertTriangle, Scale, Play, CalendarDays, RotateCcw, X, Sparkles, BookOpen, Timer, ChevronDown } from 'lucide-react';
 import type { Readiness, RedFlagState, DayKey } from '../types/training';
 import {
   getSessionForDate, getSessionLog, updateSessionLog, adjustForReadiness,
   applyPrerequisites, effectiveReadiness,
-  getLastExerciseLog, setProgramStartDate, getTrainingData, addBodyMetric,
+  getLastExerciseLog, getLastExerciseNote, setProgramStartDate, getTrainingData, addBodyMetric,
   latestBodyweight, getTargetsForDate, dateKey, getDayKeyForDate,
-  getNextRotationDayKey, getSpacingGuards, DAY_KEY_TO_LETTER,
+  getNextRotationDayKey, getSpacingGuards, DAY_KEY_TO_LETTER, getWeekNum,
 } from '../utils/training';
-import { WARMUP, TREADMILL_NOTE, PROGRAM_NAME, PHASES, getPhaseForWeek } from '../data/program';
+import {
+  WARMUP, SESSION_NOTE, PROGRAM_NAME, PHASES, getPhaseForWeek,
+  PROGRAM_NOTES, WEEKLY_VOLUME, VOLUME_NOTE, SWAPS,
+} from '../data/program';
 import { suggestReadiness, lastSyncLabel, isHealthDataStale } from '../utils/health';
 import useRestTimer from '../hooks/useRestTimer';
 import { CoachDaily } from './Coach';
@@ -67,9 +70,10 @@ const Train = ({ selectedDate, onUpdate }: TrainProps) => {
           <Dumbbell className="w-6 h-6" /> {PROGRAM_NAME}
         </h2>
         <p className="text-gray-600 dark:text-gray-300 mb-4">
-          16-week calisthenics-hybrid program. 4 days/week (Mon, Tue, Thu, Sat).
-          Week 1 is an assessment week — everything submaximal. Pick your start
-          date (it snaps to that week's Monday).
+          16-week hypertrophy block. 5 days/week — Push, Pull, Legs, Upper,
+          Lower — with every muscle trained twice. Three accumulation blocks
+          and three deloads (weeks 6, 12 and 16). Pick your start date; it
+          snaps to that week's Monday.
         </p>
         <div className="flex gap-3 items-center">
           <input
@@ -169,6 +173,7 @@ const Train = ({ selectedDate, onUpdate }: TrainProps) => {
         />
 
         <BodyweightCard key={key} bw={bw} date={key} onSaved={refresh} />
+        <ProgramNotesCard />
       </div>
     );
   }
@@ -189,7 +194,7 @@ const Train = ({ selectedDate, onUpdate }: TrainProps) => {
 
   const exLog = (exId: string) => log?.exercises[exId];
 
-  const updateSet = (exId: string, setIdx: number, field: 'weight' | 'reps', value: string) => {
+  const updateSet = (exId: string, setIdx: number, field: 'weight' | 'reps' | 'rir', value: string) => {
     updateSessionLog(selectedDate, (l) => {
       if (!l.exercises[exId]) l.exercises[exId] = { sets: [] };
       const sets = l.exercises[exId].sets;
@@ -199,7 +204,9 @@ const Train = ({ selectedDate, onUpdate }: TrainProps) => {
     refresh();
   };
 
-  const toggleDone = (exId: string, setIdx: number) => {
+  /** Tick a set. `restSeconds` is the exercise's OWN prescribed rest — the
+   *  timer starts from that rather than one global default. */
+  const toggleDone = (exId: string, setIdx: number, restSeconds?: number) => {
     let nowDone = false;
     updateSessionLog(selectedDate, (l) => {
       if (!l.exercises[exId]) l.exercises[exId] = { sets: [] };
@@ -208,8 +215,18 @@ const Train = ({ selectedDate, onUpdate }: TrainProps) => {
       sets[setIdx].done = !sets[setIdx].done;
       nowDone = sets[setIdx].done;
     });
-    if (nowDone) restTimer.start();
+    if (nowDone) restTimer.start(restSeconds);
     refresh();
+  };
+
+  /** Per-exercise note. The field and its sync path already existed; nothing
+   *  had ever written to it because there was no input. */
+  const saveExerciseNote = (exId: string, note: string) => {
+    updateSessionLog(selectedDate, (l) => {
+      if (!l.exercises[exId]) l.exercises[exId] = { sets: [] };
+      if (note.trim()) l.exercises[exId].note = note;
+      else delete l.exercises[exId].note;
+    });
   };
 
   const toggleComplete = () => {
@@ -368,16 +385,40 @@ const Train = ({ selectedDate, onUpdate }: TrainProps) => {
       {/* Warm-up */}
       <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow">
         <h3 className="font-bold text-gray-900 dark:text-white mb-2">Warm-up</h3>
-        <p className="text-sm text-gray-600 dark:text-gray-300 mb-2">{TREADMILL_NOTE}</p>
+        <p className="text-sm text-gray-600 dark:text-gray-300 mb-2">{SESSION_NOTE}</p>
         <ul className="text-sm text-gray-700 dark:text-gray-300 list-disc ml-5 space-y-0.5">
           {WARMUP.map((w) => <li key={w}>{w}</li>)}
         </ul>
       </div>
 
-      {/* Rest timer */}
+      {/* Rest timer — wall-clock, so locking the phone mid-rest does not
+          stall it. Starts from each exercise's own prescribed rest. */}
       {restTimer.running && (
-        <div className="fixed bottom-24 right-4 bg-primary-600 text-white rounded-full px-5 py-3 shadow-lg font-bold text-lg z-20">
-          Rest {Math.floor(restTimer.secondsLeft / 60)}:{String(restTimer.secondsLeft % 60).padStart(2, '0')}
+        <div className="fixed bottom-24 right-4 left-4 sm:left-auto bg-primary-600 text-white rounded-xl px-4 py-3 shadow-lg z-20 flex items-center gap-3">
+          <Timer className="w-5 h-5 flex-shrink-0" aria-hidden />
+          <span className="font-bold text-lg tabular-nums">
+            {Math.floor(restTimer.secondsLeft / 60)}:{String(restTimer.secondsLeft % 60).padStart(2, '0')}
+          </span>
+          <span className="text-xs opacity-80 flex-1 truncate">rest</span>
+          <button
+            onClick={() => restTimer.extend(30)}
+            className="text-xs font-semibold bg-white/20 hover:bg-white/30 rounded px-2 py-1"
+          >
+            +30s
+          </button>
+          <button
+            onClick={restTimer.pause}
+            className="text-xs font-semibold bg-white/20 hover:bg-white/30 rounded px-2 py-1"
+          >
+            Pause
+          </button>
+          <button
+            onClick={() => restTimer.reset()}
+            aria-label="Dismiss rest timer"
+            className="text-white/80 hover:text-white"
+          >
+            <X className="w-4 h-4" />
+          </button>
         </div>
       )}
 
@@ -391,6 +432,7 @@ const Train = ({ selectedDate, onUpdate }: TrainProps) => {
         active.map((ex) => {
           const elog = exLog(ex.id);
           const last = getLastExerciseLog(ex.id, selectedDate);
+          const lastNote = last ? getLastExerciseNote(ex.id, selectedDate) : null;
           return (
             <div key={ex.id} className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow">
               <div className="flex justify-between items-start flex-wrap gap-1">
@@ -435,18 +477,33 @@ const Train = ({ selectedDate, onUpdate }: TrainProps) => {
                     <div key={i} className="flex items-center gap-2">
                       <span className="w-10 text-xs text-gray-500 dark:text-gray-400">Set {i + 1}</span>
                       <input
-                        className="w-24 border rounded px-2 py-1 text-sm dark:bg-gray-700 dark:text-white dark:border-gray-600"
-                        placeholder={lastSet?.weight || (ex.timed ? '—' : 'kg / band')}
+                        className="flex-1 min-w-0 border rounded px-2 py-1 text-sm dark:bg-gray-700 dark:text-white dark:border-gray-600"
+                        placeholder={lastSet?.weight || (ex.timed ? '—' : 'kg')}
                         value={s?.weight ?? ''}
+                        aria-label={`Set ${i + 1} weight`}
                         onChange={(e) => updateSet(ex.id, i, 'weight', e.target.value)}
                       />
                       <input
-                        className="w-20 border rounded px-2 py-1 text-sm dark:bg-gray-700 dark:text-white dark:border-gray-600"
+                        className="w-16 border rounded px-2 py-1 text-sm dark:bg-gray-700 dark:text-white dark:border-gray-600"
                         placeholder={lastSet?.reps || (ex.timed ? 'sec' : 'reps')}
                         value={s?.reps ?? ''}
+                        aria-label={`Set ${i + 1} reps`}
                         onChange={(e) => updateSet(ex.id, i, 'reps', e.target.value)}
                       />
-                      <button onClick={() => toggleDone(ex.id, i)} aria-label="toggle set done">
+                      {/* Actual RIR felt on the set — distinct from the
+                          prescription shown in the header. */}
+                      <input
+                        className="w-14 border rounded px-2 py-1 text-sm dark:bg-gray-700 dark:text-white dark:border-gray-600"
+                        placeholder={lastSet?.rir || 'RIR'}
+                        value={s?.rir ?? ''}
+                        aria-label={`Set ${i + 1} reps in reserve`}
+                        title="Reps in reserve — how many more you could have done"
+                        onChange={(e) => updateSet(ex.id, i, 'rir', e.target.value)}
+                      />
+                      <button
+                        onClick={() => toggleDone(ex.id, i, ex.restSeconds)}
+                        aria-label="toggle set done"
+                      >
                         {s?.done
                           ? <CheckCircle2 className="w-6 h-6 text-green-600" />
                           : <Circle className="w-6 h-6 text-gray-300 dark:text-gray-600" />}
@@ -455,6 +512,17 @@ const Train = ({ selectedDate, onUpdate }: TrainProps) => {
                   );
                 })}
               </div>
+
+              {/* Per-exercise note — how it felt, form, what to change next
+                  time. Saves as you type; the previous session's note is
+                  shown above it for comparison. */}
+              <ExerciseNote
+                key={`${key}-${ex.id}`}
+                exId={ex.id}
+                initial={elog?.note ?? ''}
+                lastNote={lastNote}
+                onSave={saveExerciseNote}
+              />
             </div>
           );
         })
@@ -473,17 +541,198 @@ const Train = ({ selectedDate, onUpdate }: TrainProps) => {
       {/* Notes */}
       <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow">
         <h3 className="font-bold text-gray-900 dark:text-white mb-2">Session notes</h3>
-        <textarea
-          defaultValue={log?.notes ?? ''}
-          onBlur={(e) => { saveNotes(e.target.value); refresh(); }}
-          placeholder="How did it feel? Shoulder OK? Any PRs?"
-          className="w-full border rounded-lg px-3 py-2 text-sm min-h-[70px] dark:bg-gray-700 dark:text-white dark:border-gray-600"
+        <SessionNote
+          key={key}
+          initial={log?.notes ?? ''}
+          onSave={saveNotes}
         />
       </div>
+
+      <ProgramNotesCard />
 
       {/* `key={key}` re-mounts the card on date change so its internal input
           state resets without a useEffect (M-02). */}
       <BodyweightCard key={key} bw={bw} date={key} onSaved={refresh} />
+    </div>
+  );
+};
+
+
+// ─── Autosaving note field ────────────────────────────────────────────────────
+//
+// Replaces the old uncontrolled `defaultValue` + `onBlur` textarea, which lost
+// text if the app was swiped closed with the keyboard still up, and which
+// wrote its stale DOM value back over any note pulled from another device.
+//
+// This version is controlled, debounces a save while you type, and flushes on
+// pagehide / tab-hide so backgrounding the app can never drop the last edit.
+interface AutoNoteProps {
+  initial: string;
+  onSave: (value: string) => void;
+  placeholder: string;
+  minHeight: string;
+  label?: string;
+}
+
+const AutoNote = ({ initial, onSave, placeholder, minHeight, label }: AutoNoteProps) => {
+  const [value, setValue] = useState(initial);
+  const latest = useRef(initial);
+  const savedRef = useRef(initial);
+  const timerRef = useRef<number | null>(null);
+
+  const flush = useCallback(() => {
+    if (latest.current === savedRef.current) return;
+    savedRef.current = latest.current;
+    onSave(latest.current);
+  }, [onSave]);
+
+  useEffect(() => {
+    const onHide = () => { if (document.hidden) flush(); };
+    window.addEventListener('pagehide', flush);
+    document.addEventListener('visibilitychange', onHide);
+    return () => {
+      window.removeEventListener('pagehide', flush);
+      document.removeEventListener('visibilitychange', onHide);
+      if (timerRef.current !== null) window.clearTimeout(timerRef.current);
+      flush(); // unmount (date change, navigation) also commits
+    };
+  }, [flush]);
+
+  const onChange = (next: string) => {
+    setValue(next);
+    latest.current = next;
+    if (timerRef.current !== null) window.clearTimeout(timerRef.current);
+    timerRef.current = window.setTimeout(flush, 600);
+  };
+
+  return (
+    <textarea
+      value={value}
+      aria-label={label}
+      onChange={(e) => onChange(e.target.value)}
+      onBlur={flush}
+      placeholder={placeholder}
+      className={`w-full border rounded-lg px-3 py-2 text-sm ${minHeight} dark:bg-gray-700 dark:text-white dark:border-gray-600`}
+    />
+  );
+};
+
+const SessionNote = ({ initial, onSave }: { initial: string; onSave: (v: string) => void }) => (
+  <AutoNote
+    initial={initial}
+    onSave={onSave}
+    label="Session notes"
+    placeholder="How did the session go? Sleep, energy, anything to carry into next week."
+    minHeight="min-h-[70px]"
+  />
+);
+
+// ─── Per-exercise note ───────────────────────────────────────────────────────
+interface ExerciseNoteProps {
+  exId: string;
+  initial: string;
+  lastNote: { date: string; note: string } | null;
+  onSave: (exId: string, value: string) => void;
+}
+
+const ExerciseNote = ({ exId, initial, lastNote, onSave }: ExerciseNoteProps) => {
+  const save = useCallback((v: string) => onSave(exId, v), [onSave, exId]);
+  return (
+    <div className="mt-3">
+      <AutoNote
+        initial={initial}
+        onSave={save}
+        label="Exercise notes"
+        placeholder="Notes — how it felt, form, niggles, what to change next time"
+        minHeight="min-h-[38px]"
+      />
+      {lastNote && (
+        <div className="text-xs text-gray-400 dark:text-gray-500 mt-1 italic">
+          {lastNote.date}: “{lastNote.note}”
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ─── Programme notes ─────────────────────────────────────────────────────────
+//
+// The reasoning behind the programme — rest periods, RIR, double progression,
+// the pull-up cluster rule, the weekly volume audit and the swap list. Kept in
+// the app rather than in a chat log so it is here in eight weeks' time when
+// you wonder why laterals get 90 seconds.
+const ProgramNotesCard = () => {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl shadow overflow-hidden">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className="w-full flex items-center gap-2 p-5 text-left"
+      >
+        <BookOpen className="w-5 h-5 text-gray-500 dark:text-gray-400 flex-shrink-0" aria-hidden />
+        <span className="font-bold text-gray-900 dark:text-white flex-1">Programme notes</span>
+        <ChevronDown
+          className={`w-5 h-5 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`}
+          aria-hidden
+        />
+      </button>
+
+      {open && (
+        <div className="px-5 pb-5 space-y-5">
+          {PROGRAM_NOTES.map((n) => (
+            <div key={n.id}>
+              <h4 className="font-semibold text-sm text-gray-900 dark:text-white mb-1">{n.title}</h4>
+              <p className="text-[13px] leading-relaxed text-gray-600 dark:text-gray-300">{n.body}</p>
+            </div>
+          ))}
+
+          <div>
+            <h4 className="font-semibold text-sm text-gray-900 dark:text-white mb-2">
+              Weekly volume, checked
+            </h4>
+            <div className="overflow-x-auto">
+              <table className="w-full text-[13px] min-w-[320px]">
+                <thead>
+                  <tr className="text-left text-gray-400 dark:text-gray-500">
+                    <th className="font-medium py-1 pr-3">Muscle</th>
+                    <th className="font-medium py-1 pr-3">Direct</th>
+                    <th className="font-medium py-1 pr-3">+ indirect</th>
+                    <th className="font-medium py-1">Target</th>
+                  </tr>
+                </thead>
+                <tbody className="text-gray-700 dark:text-gray-300">
+                  {WEEKLY_VOLUME.map((v) => (
+                    <tr key={v.muscle} className="border-t border-gray-100 dark:border-gray-700">
+                      <td className="py-1 pr-3 font-medium">{v.muscle}</td>
+                      <td className="py-1 pr-3 tabular-nums">{v.direct}</td>
+                      <td className="py-1 pr-3 tabular-nums">{v.fractional}</td>
+                      <td className="py-1 tabular-nums text-gray-500 dark:text-gray-400">
+                        {v.targetLow}–{v.targetHigh}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 leading-relaxed">{VOLUME_NOTE}</p>
+          </div>
+
+          <div>
+            <h4 className="font-semibold text-sm text-gray-900 dark:text-white mb-2">
+              Swaps — if a lift bothers a joint or stalls twice
+            </h4>
+            <dl className="space-y-1.5">
+              {SWAPS.map((sw) => (
+                <div key={sw.from} className="text-[13px]">
+                  <dt className="font-medium text-gray-800 dark:text-gray-200">{sw.from}</dt>
+                  <dd className="text-gray-600 dark:text-gray-400">{sw.to}</dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -509,32 +758,13 @@ interface DayPickerProps {
 }
 
 const DayPickerCard = ({ date, currentKey, naturalKey, suggestedKey, onPick, onReset, intro }: DayPickerProps) => {
-  // Resolve which phase's day labels to show. If the date is before program
-  // start (no week), fall back to Phase 1 labels so the picker still works.
-  const weekNum = getTrainingData().programStartDate
-    ? PHASES.find(p => p.weeks.includes(1))?.weeks[0] && undefined // satisfy lint
-    : undefined;
-  void weekNum;
-  // Pick the phase from the natural date when possible.
-  let phase = PHASES[0];
-  try {
-    // Use a runtime week-num lookup via getWeekNum if start is set
-    const td = getTrainingData();
-    if (td.programStartDate) {
-      const dStr = format(date, 'yyyy-MM-dd');
-      const s = new Date(td.programStartDate + 'T00:00:00');
-      const dow = (s.getDay() + 6) % 7;
-      s.setDate(s.getDate() - dow);
-      const d = new Date(dStr + 'T00:00:00');
-      const diff = Math.floor((d.getTime() - s.getTime()) / 86400000);
-      if (diff >= 0) {
-        const wk = Math.min(Math.floor(diff / 7) + 1, 16);
-        phase = getPhaseForWeek(wk);
-      }
-    }
-  } catch { /* fall back to phase 1 */ }
-
-  const days = phase.days; // [{ key, label, ... }]
+  // Which phase's day labels to show. Before program start (no week) fall back
+  // to the first phase so the picker still works. Uses the shared getWeekNum
+  // rather than re-deriving the week inline, which this file used to do in
+  // three separate places.
+  const wk = getWeekNum(date);
+  const phase = wk === null ? PHASES[0] : getPhaseForWeek(Math.min(wk, 16));
+  const days = phase.days;
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow">
@@ -552,7 +782,7 @@ const DayPickerCard = ({ date, currentKey, naturalKey, suggestedKey, onPick, onR
         )}
       </div>
       <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">{intro}</p>
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
         {days.map(d => {
           const isCurrent = d.key === currentKey;
           const isNatural = d.key === naturalKey;
@@ -663,17 +893,11 @@ interface NextSessionPreviewProps {
 const NextSessionPreviewCard = ({ date, dayKey }: NextSessionPreviewProps) => {
   // Resolve the phase for the next session by looking 1 day ahead — guarantees
   // the natural day-of-week matches what the rotation would pick anyway.
-  const td = getTrainingData();
-  if (!td.programStartDate) return null;
-  const s = new Date(td.programStartDate + 'T00:00:00');
-  const dow = (s.getDay() + 6) % 7;
-  s.setDate(s.getDate() - dow);
   const ahead = new Date(dateKey(date) + 'T00:00:00');
   ahead.setDate(ahead.getDate() + 1);
-  const diff = Math.floor((ahead.getTime() - s.getTime()) / 86400000);
-  if (diff < 0) return null;
-  const wk = Math.min(Math.floor(diff / 7) + 1, 16);
-  const phase = getPhaseForWeek(wk);
+  const wkAhead = getWeekNum(ahead);
+  if (wkAhead === null) return null;
+  const phase = getPhaseForWeek(Math.min(wkAhead, 16));
   const day = phase.days.find((d) => d.key === dayKey);
   if (!day) return null;
   return (
@@ -697,7 +921,7 @@ const NextSessionPreviewCard = ({ date, dayKey }: NextSessionPreviewProps) => {
 // stored in localStorage so it doesn't reappear after a reload. The key is
 // versioned (v2) so future programming-change rollouts can re-show the banner
 // by bumping the suffix.
-const COACH_NOTES_KEY = 'health_coach_notes_v2_dismissed';
+const COACH_NOTES_KEY = 'health_coach_notes_v3_dismissed';
 
 const CoachNotesBanner = () => {
   const [dismissed, setDismissed] = useState(false);
@@ -714,12 +938,14 @@ const CoachNotesBanner = () => {
       <div className="flex items-start gap-2">
         <Sparkles className="w-4 h-4 mt-0.5 flex-shrink-0" aria-hidden />
         <div className="flex-1">
-          <div className="font-semibold mb-1">Coach notes — Week 2</div>
+          <div className="font-semibold mb-1">Coach notes — Garage Block 16</div>
           <ul className="list-disc ml-4 space-y-0.5 text-[13px]">
-            <li>Sessions rotate <strong>A → B → C → D</strong>, not by weekday. The picker highlights what's next.</li>
-            <li>Max 2 consecutive training days. No Pull (B) ↔ Push (C) back-to-back — the app warns when you're about to.</li>
+            <li>Five sessions rotate <strong>Push → Pull → Legs → Upper → Lower</strong>, not by weekday. The picker highlights what's next.</li>
+            <li>Every muscle twice a week. Rest days sit after Legs and after Lower — that spacing is the plan, not a gap.</li>
+            <li>Log <strong>weight × reps × RIR</strong> for every set. Double progression is guesswork without last week's numbers.</li>
+            <li>Ticking a set starts that exercise's own rest timer. Nothing past 90 s adds growth on isolation work.</li>
+            <li>Pull-ups are clusters — <strong>never to failure</strong> inside a block. Retest a max in weeks 6, 12 and 16.</li>
             <li>Protein ≥ 160 g daily, including rest days.</li>
-            <li>No overhead barbell work. Stop any exercise on shoulder pain &gt; 2/10.</li>
           </ul>
         </div>
         <button

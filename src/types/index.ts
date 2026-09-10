@@ -88,6 +88,8 @@ export interface MealSplit {
 
 export interface UserSettings {
   targets: UserTargets;
+  /** One-time marker for the current coached nutrition target migration. */
+  targetPlanVersion?: string;
   theme: 'light' | 'dark';
   pushupReminders?: {
     enabled: boolean;
@@ -102,11 +104,6 @@ export interface UserSettings {
   staples?: string[];
 }
 
-export interface DayStatus {
-  date: string;
-  status: 'met' | 'close' | 'missed' | 'future';
-  progress: number; // percentage
-}
 
 // ─── Body-composition assessment (InBody and similar devices) ────────────────
 
