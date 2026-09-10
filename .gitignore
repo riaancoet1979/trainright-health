@@ -20,3 +20,11 @@ public/garmin_health.json
 # Personal full-app backup exports (Settings → export backup) — same privacy
 # class as the Garmin payload above; never commit.
 /trainright-health-backup-*.json
+backups/
+imports/
+nutrition/
+snacks/
+.vscode/
+.stfolder/
+.stignore
+*.sync-conflict-*
