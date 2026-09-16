@@ -12,7 +12,7 @@ import type {
   ProgramExercise, MacroTargets, DayTypeTargets, BodyMetric, LoggedSet,
   RedFlagState, SessionLetter,
 } from '../types/training';
-import { PHASES, getPhaseForWeek, DEFAULT_DAY_TYPE_TARGETS } from '../data/program';
+import { PHASES, getPhaseForWeek, DEFAULT_DAY_TYPE_TARGETS, PROGRAM_WEEKS } from '../data/program';
 import { getUserSettings, saveUserSettings } from './storage';
 import { markExported } from './migrations';
 import { writeStore } from '../sync/writeStore';
@@ -21,7 +21,7 @@ export const TRAINING_KEY = 'health_training_v1';
 
 /**
  * Natural weekday → session. Five training days with rest after Legs and
- * after Lower, which is the spacing Garage Block 16 is written around:
+ * after Lower, which is the spacing Garage Block 12 is written around:
  * Push, Pull, Legs, rest, Upper, Lower, rest.
  */
 const DAY_INDEX: Record<number, DayKey | null> = {
@@ -87,7 +87,7 @@ export interface ResolvedSession {
   phaseLabel: string;
   phaseFocus: string;
   day: ProgramDay;
-  isPastProgram: boolean; // beyond week 16
+  isPastProgram: boolean; // beyond the final week of the block
 }
 
 export interface SessionResolveOpts {
@@ -107,8 +107,11 @@ export const getSessionForDate = (
   if (weekNum === null) return null;
   const dayKey = opts?.dayKeyOverride ?? getDayKeyForDate(date);
   if (!dayKey) return null;
-  const effectiveWeek = Math.min(weekNum, 16);
-  const phase = getPhaseForWeek(effectiveWeek);
+  // No clamp here. getPhaseForWeek already rolls a week past the end back onto
+  // the PEAK block; clamping to the final week instead pinned anyone who ran
+  // past the finish to the deload forever — two sets at 60% every session, with
+  // nothing on screen explaining why.
+  const phase = getPhaseForWeek(weekNum);
   const day = phase.days.find((d) => d.key === dayKey);
   if (!day) return null;
   return {
@@ -117,7 +120,7 @@ export const getSessionForDate = (
     phaseLabel: phase.label,
     phaseFocus: phase.focus,
     day,
-    isPastProgram: weekNum > 16,
+    isPastProgram: weekNum > PROGRAM_WEEKS,
   };
 };
 

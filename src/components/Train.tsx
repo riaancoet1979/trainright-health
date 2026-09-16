@@ -10,7 +10,7 @@ import {
   getNextRotationDayKey, getSpacingGuards, DAY_KEY_TO_LETTER, getWeekNum,
 } from '../utils/training';
 import {
-  WARMUP, SESSION_NOTE, PROGRAM_NAME, PHASES, getPhaseForWeek,
+  WARMUP, SESSION_NOTE, PROGRAM_NAME, PHASES, getPhaseForWeek, RECOMMENDED_START,
   PROGRAM_NOTES, WEEKLY_VOLUME, VOLUME_NOTE, SWAPS,
 } from '../data/program';
 import { suggestReadiness, lastSyncLabel, isHealthDataStale } from '../utils/health';
@@ -57,7 +57,7 @@ const Train = ({ selectedDate, onUpdate }: TrainProps) => {
   const readiness: Readiness = effectiveReadiness(pickedReadiness, redFlags);
   const shoulderPain = log?.shoulderPain ?? 0;
 
-  const [startInput, setStartInput] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [startInput, setStartInput] = useState(RECOMMENDED_START);
 
   // ── No program started yet ──
   if (!data.programStartDate) {
@@ -70,10 +70,12 @@ const Train = ({ selectedDate, onUpdate }: TrainProps) => {
           <Dumbbell className="w-6 h-6" /> {PROGRAM_NAME}
         </h2>
         <p className="text-gray-600 dark:text-gray-300 mb-4">
-          16-week hypertrophy block. 5 days/week — Push, Pull, Legs, Upper,
-          Lower — with every muscle trained twice. Three accumulation blocks
-          and three deloads (weeks 6, 12 and 16). Pick your start date; it
-          snaps to that week's Monday.
+          12-week hypertrophy block, built backwards from its finish. 5
+          days/week — Push, Pull, Legs, Upper, Lower — with every muscle
+          trained twice. Three accumulation blocks and two deloads (weeks 6
+          and 12). Start Monday 14 September 2026 and the last week is the
+          week of 30 November, closing Sunday 6 December. The date snaps to
+          that week's Monday.
         </p>
         <div className="flex gap-3 items-center">
           <input
@@ -259,7 +261,7 @@ const Train = ({ selectedDate, onUpdate }: TrainProps) => {
         <div className="flex justify-between items-start flex-wrap gap-2">
           <div>
             <div className="text-xs uppercase tracking-wide text-primary-600 dark:text-primary-400 font-semibold">
-              Week {session.weekNum}{session.isPastProgram ? ' (program complete — repeat Phase 4)' : ''} · {session.phaseLabel}
+              Week {session.weekNum}{session.isPastProgram ? ' (block complete — repeating the peak weeks)' : ''} · {session.phaseLabel}
             </div>
             <h2 className="text-xl font-bold text-gray-900 dark:text-white">
               {format(selectedDate, 'EEE d MMM')} — {session.day.label}
@@ -763,7 +765,7 @@ const DayPickerCard = ({ date, currentKey, naturalKey, suggestedKey, onPick, onR
   // rather than re-deriving the week inline, which this file used to do in
   // three separate places.
   const wk = getWeekNum(date);
-  const phase = wk === null ? PHASES[0] : getPhaseForWeek(Math.min(wk, 16));
+  const phase = wk === null ? PHASES[0] : getPhaseForWeek(wk);
   const days = phase.days;
 
   return (
@@ -897,7 +899,7 @@ const NextSessionPreviewCard = ({ date, dayKey }: NextSessionPreviewProps) => {
   ahead.setDate(ahead.getDate() + 1);
   const wkAhead = getWeekNum(ahead);
   if (wkAhead === null) return null;
-  const phase = getPhaseForWeek(Math.min(wkAhead, 16));
+  const phase = getPhaseForWeek(wkAhead);
   const day = phase.days.find((d) => d.key === dayKey);
   if (!day) return null;
   return (
@@ -909,7 +911,7 @@ const NextSessionPreviewCard = ({ date, dayKey }: NextSessionPreviewProps) => {
         Rotation queues up <strong>{day.label}</strong>. {day.goal}
       </p>
       <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-        Today: walk, sleep, protein ≥ 160 g. The session log is ready when you are.
+        Today: walk, sleep, protein 190 g. The session log is ready when you are.
       </p>
     </div>
   );
@@ -921,7 +923,7 @@ const NextSessionPreviewCard = ({ date, dayKey }: NextSessionPreviewProps) => {
 // stored in localStorage so it doesn't reappear after a reload. The key is
 // versioned (v2) so future programming-change rollouts can re-show the banner
 // by bumping the suffix.
-const COACH_NOTES_KEY = 'health_coach_notes_v3_dismissed';
+const COACH_NOTES_KEY = 'health_coach_notes_v4_dismissed';
 
 const CoachNotesBanner = () => {
   const [dismissed, setDismissed] = useState(false);
@@ -938,14 +940,14 @@ const CoachNotesBanner = () => {
       <div className="flex items-start gap-2">
         <Sparkles className="w-4 h-4 mt-0.5 flex-shrink-0" aria-hidden />
         <div className="flex-1">
-          <div className="font-semibold mb-1">Coach notes — Garage Block 16</div>
+          <div className="font-semibold mb-1">Coach notes — {PROGRAM_NAME}</div>
           <ul className="list-disc ml-4 space-y-0.5 text-[13px]">
             <li>Five sessions rotate <strong>Push → Pull → Legs → Upper → Lower</strong>, not by weekday. The picker highlights what's next.</li>
             <li>Every muscle twice a week. Rest days sit after Legs and after Lower — that spacing is the plan, not a gap.</li>
             <li>Log <strong>weight × reps × RIR</strong> for every set. Double progression is guesswork without last week's numbers.</li>
             <li>Ticking a set starts that exercise's own rest timer. Nothing past 90 s adds growth on isolation work.</li>
-            <li>Pull-ups are clusters — <strong>never to failure</strong> inside a block. Retest a max in weeks 6, 12 and 16.</li>
-            <li>Protein ≥ 160 g daily, including rest days.</li>
+            <li>Pull-ups are clusters — <strong>never to failure</strong> inside a block. Retest a max in weeks 6 and 12.</li>
+            <li>Protein 190 g daily, including rest days — carbs are the only thing that moves.</li>
           </ul>
         </div>
         <button

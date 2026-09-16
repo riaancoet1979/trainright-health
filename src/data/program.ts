@@ -1,6 +1,19 @@
 // ============================================================
-// TrainRight Health — Garage Block 16
-// 16-week push/pull/legs/upper/lower hypertrophy block — 5 days/week
+// TrainRight Health — Garage Block 12
+// 12-week push/pull/legs/upper/lower hypertrophy block — 5 days/week
+//
+// CALENDAR-ANCHORED (2026-09-16). This block is not "16 weeks from
+// whenever you press start" — it is built backwards from a fixed finish:
+// the last week is the first week of December 2026. Starting Monday
+// 14 September 2026 puts week 12 on the week of Monday 30 November and
+// ends the block on Sunday 6 December.
+//
+// Losing four weeks against the old 16-week plan is paid for by
+// compressing the progression rather than truncating it: the mid-block
+// deload happens once instead of twice, the build and peak blocks are
+// shorter, and each block now steps INTENSITY down the RIR ladder as
+// well as adding sets. Peak volume is identical to the old week 13–15 —
+// it is simply reached in week 10 instead of week 13.
 //
 //   Push  — chest, shoulders, triceps
 //   Pull  — back, rear delts, biceps
@@ -29,7 +42,23 @@ import type {
   ProgramPhase, ProgramDay, ProgramExercise, DayTypeTargets, SessionKey,
 } from '../types/training';
 
-export const PROGRAM_NAME = 'Garage Block 16';
+export const PROGRAM_NAME = 'Garage Block 12';
+
+/**
+ * Length of the block in weeks. Single source of truth — the week clamp in
+ * the training engine and the phase-preview cards all read this instead of
+ * hard-coding a number, which is how the old 16 ended up in five places.
+ */
+export const PROGRAM_WEEKS = 12;
+
+/**
+ * Monday the block is written to start on, so week 12 lands on the week of
+ * Monday 30 November 2026 and the block closes on Sunday 6 December — the
+ * first week of December, as asked. Used to prefill the start-date pickers;
+ * a different start date still works, it just moves the finish.
+ */
+export const RECOMMENDED_START = '2026-09-14';
+export const PROGRAM_FINISH = '2026-12-06';
 
 export const SESSION_NOTE =
   'Five to ten minutes of general warm-up, then two ramp-up sets on the first heavy lift of the day.';
@@ -133,8 +162,21 @@ export const PULLUP_NOTE: ProgramNote = {
     'sets of two or three, each stopping well short of failure, gets the same reps at a fraction ' +
     'of the joint cost and adds reps faster because you practise the movement fresh every set. ' +
     'Never take a pull-up set to failure during a block. When 5×3 feels easy, go to 5×4. Retest ' +
-    'a true max only in the deload weeks — 6, 12 and 16. Barbell rows and chest-supported rows ' +
+    'a true max only in the deload weeks — 6 and 12. Barbell rows and chest-supported rows ' +
     'carry the back volume in the meantime.',
+};
+
+export const CALENDAR_NOTE: ProgramNote = {
+  id: 'calendar',
+  title: 'Twelve weeks, finishing the first week of December',
+  body:
+    'The block is anchored to a finish date rather than run open-ended. Start Monday ' +
+    '14 September 2026 and week 12 is the week of Monday 30 November, closing on Sunday ' +
+    '6 December. Four weeks shorter than a standard block means the progression is denser, ' +
+    'not shorter: one mid-block deload instead of two, and every block steps both volume and ' +
+    'effort — Block A at the prescribed reps in reserve, Block B one notch harder with an extra ' +
+    'set, Block C one notch harder again with two. Heavy barbell lifts never go below 1 rep in ' +
+    'reserve, whatever the block says, because you train alone.',
 };
 
 export const LOGGING_RULE: ProgramNote = {
@@ -147,7 +189,7 @@ export const LOGGING_RULE: ProgramNote = {
 };
 
 export const PROGRAM_NOTES: ProgramNote[] = [
-  REST_RULE, RIR_GUIDE, PROGRESSION_RULE, EFFORT_RULE, PULLUP_NOTE, LOGGING_RULE,
+  CALENDAR_NOTE, REST_RULE, RIR_GUIDE, PROGRESSION_RULE, EFFORT_RULE, PULLUP_NOTE, LOGGING_RULE,
 ];
 
 /** Weekly set volume this split delivers, against the target range. */
@@ -203,7 +245,8 @@ const PUSH: Ex[] = [
   {
     id: 'bb_bench', name: 'Barbell Bench Press', sets: 4, repsSpec: '5–8',
     equipment: 'Barbell + rack', category: 'bench', rest: '2–3 min', restSeconds: 150, rir: '2–3',
-    cues: 'Your heaviest press of the week. Touch the same spot every rep and keep the elbows tucked to about 60°.',
+    cues: 'Touch the same spot every rep and keep the elbows tucked to about 60°.',
+    emphasis: 'Your heaviest press of the week.',
     progression: '+2.5 kg when all sets hit 8 at 2 RIR',
   },
   {
@@ -221,7 +264,8 @@ const PUSH: Ex[] = [
   {
     id: 'db_lateral', name: 'Dumbbell Lateral Raise', sets: 4, repsSpec: '12–20',
     equipment: 'Dumbbells', category: 'isolation', rest: '90 s', restSeconds: 90, rir: '0–1',
-    cues: 'Light and strict. This is where side-delt width comes from — pressing alone will not build it.',
+    cues: 'Light and strict, no swing.',
+    emphasis: 'This is where side-delt width comes from — pressing alone will not build it.',
   },
   {
     id: 'ez_skullcrusher', name: 'EZ-Bar Skullcrusher', sets: 3, repsSpec: '10–15',
@@ -238,14 +282,17 @@ const PUSH: Ex[] = [
 const PULL: Ex[] = [
   {
     id: 'pullup_cluster', name: 'Pull-up — clusters', sets: 5, repsSpec: '2–3',
+    fixedSets: true,
     equipment: 'Pull-up bar', category: 'pullup', rest: '90 s', restSeconds: 90, rir: 'never to failure',
-    cues: 'Five short sets well short of failure add reps faster than four sets grinding to four. Read the pull-up note below.',
+    cues: 'Dead-hang start, chin over the bar, controlled on the way down. Stop each set well short of failure.',
+    emphasis: 'Five short sets beat four sets grinding to four — they add reps faster. Read the pull-up note below.',
     progression: 'When 5×3 feels easy, go to 5×4. Retest a true max only in deload weeks.',
   },
   {
     id: 'bb_row', name: 'Barbell Bent-Over Row', sets: 4, repsSpec: '6–10',
     equipment: 'Barbell', category: 'row', rest: '2–3 min', restSeconds: 150, rir: '2',
-    cues: 'Torso around 45°, pull to the belly button. This is the main back builder — load it seriously.',
+    cues: 'Torso around 45°, pull to the belly button.',
+    emphasis: 'This is the main back builder — load it seriously.',
     progression: '+2.5 kg when all sets hit 10 at 2 RIR',
   },
   {
@@ -262,7 +309,8 @@ const PULL: Ex[] = [
   {
     id: 'rear_delt_flye', name: 'Rear-Delt Dumbbell Flye', sets: 3, repsSpec: '15–20',
     equipment: 'Dumbbells + bench', category: 'isolation', rest: '90 s', restSeconds: 90, rir: '0–1',
-    cues: 'Chest down on the incline bench. Rear delts are the cheapest shoulder insurance in the programme — do not skip them.',
+    cues: 'Chest down on the incline bench.',
+    emphasis: 'Rear delts are the cheapest shoulder insurance in the programme — do not skip them.',
   },
   {
     id: 'ez_curl', name: 'EZ-Bar Curl', sets: 3, repsSpec: '8–12',
@@ -288,7 +336,8 @@ const LEGS: Ex[] = [
     id: 'bulgarian_split_squat', name: 'Bulgarian Split Squat', sets: 3, repsSpec: '8–12 / leg',
     perSide: true, leftFocus: true,
     equipment: 'Dumbbells + bench', category: 'lunge', rest: '90 s', restSeconds: 90, rir: '1–2',
-    cues: 'Rear foot on the bench, dumbbells at your sides. Brutal, and the single best quad and glute builder you own without machines.',
+    cues: 'Rear foot on the bench, dumbbells at your sides.',
+    emphasis: 'Brutal, and the single best quad and glute builder you own without machines.',
   },
   {
     id: 'standing_calf_raise', name: 'Standing Barbell Calf Raise', sets: 4, repsSpec: '12–20',
@@ -307,12 +356,14 @@ const UPPER: Ex[] = [
   {
     id: 'incline_bb_press', name: 'Incline Barbell Press', sets: 4, repsSpec: '8–12',
     equipment: 'Barbell + rack + bench', category: 'bench', rest: '2 min', restSeconds: 120, rir: '2',
-    cues: 'Bench at 30° in the rack. Higher reps than Push day by design — this is the second dose, not a repeat of it.',
+    cues: 'Bench at 30° in the rack.',
+    emphasis: 'Higher reps than Push day by design — this is the second dose, not a repeat of it.',
   },
   {
     id: 'chest_supported_row', name: 'Chest-Supported Dumbbell Row', sets: 4, repsSpec: '10–15',
     equipment: 'Dumbbells + incline bench', category: 'row', rest: '2 min', restSeconds: 120, rir: '1',
-    cues: 'Face-down on the incline bench. The chest support takes the lower back out of it entirely, so you can push these hard.',
+    cues: 'Face-down on the incline bench.',
+    emphasis: 'The chest support takes the lower back out of it entirely, so you can push these hard.',
   },
   {
     id: 'db_flye', name: 'Dumbbell Flye', sets: 2, repsSpec: '15–20',
@@ -322,7 +373,8 @@ const UPPER: Ex[] = [
   {
     id: 'db_lateral_light', name: 'Dumbbell Lateral Raise', sets: 4, repsSpec: '15–25',
     equipment: 'Dumbbells', category: 'isolation', rest: '90 s', restSeconds: 90, rir: '0–1',
-    cues: 'Lighter than Push day, more reps. Side delts recover fast and tolerate this frequency well.',
+    cues: 'Strict, no swing.',
+    emphasis: 'Lighter than Push day, more reps — side delts recover fast and tolerate this frequency well.',
   },
   {
     id: 'db_hammer_curl', name: 'Dumbbell Hammer Curl', sets: 2, repsSpec: '10–15',
@@ -332,7 +384,8 @@ const UPPER: Ex[] = [
   {
     id: 'ez_oh_ext', name: 'EZ-Bar Overhead Triceps Extension', sets: 2, repsSpec: '12–20',
     equipment: 'EZ bar + bench', category: 'isolation', rest: '90 s', restSeconds: 90, rir: '0–1',
-    cues: 'Seated with back support. Last thing in the session, take it close.',
+    cues: 'Seated with back support.',
+    emphasis: 'Last thing in the session — take it close.',
   },
 ];
 
@@ -340,7 +393,8 @@ const LOWER: Ex[] = [
   {
     id: 'front_squat', name: 'Front Squat', sets: 3, repsSpec: '6–10',
     equipment: 'Barbell + rack', category: 'squat', rest: '2–3 min', restSeconds: 150, rir: '2',
-    cues: 'Different enough from Legs-day back squat to count as a second quad stimulus rather than a repeat. Cross-arm grip is fine.',
+    cues: 'Cross-arm grip is fine.',
+    emphasis: 'Different enough from Legs-day back squat to count as a second quad stimulus rather than a repeat.',
     regression: 'Goblet squat with the heavier kettlebell, higher reps',
   },
   {
@@ -371,7 +425,8 @@ const LOWER: Ex[] = [
     id: 'suitcase_carry', name: 'Kettlebell Suitcase Carry', sets: 2, repsSpec: '40 m / side',
     perSide: true, timed: true,
     equipment: 'Kettlebell', category: 'core', rest: '90 s', restSeconds: 90, rir: 'hard but upright',
-    cues: 'One kettlebell, ribs down, do not lean. Trains the obliques and the grip at once, and finishes the week honestly.',
+    cues: 'One kettlebell, ribs down, do not lean.',
+    emphasis: 'Trains the obliques and the grip at once, and finishes the week honestly.',
   },
 ];
 
@@ -391,26 +446,70 @@ const DAY_SPECS: DaySpec[] = [
 ];
 
 /**
+ * The reps-in-reserve ladder, easiest first. Stepping an exercise down this
+ * list is how a block gets HARDER without changing the exercise or the rep
+ * range — which is the lever a 12-week block needs, because there is no
+ * longer room to buy progression with weeks alone.
+ */
+const RIR_LADDER = ['2–3', '2', '1–2', '1', '0–1'] as const;
+
+/**
+ * Categories that never go below 1 rep in reserve, whatever the block steps
+ * to. These are the loaded barbell lifts: grinding the last rep alone in a
+ * garage with no spotter is how people get pinned under a bench.
+ */
+const HEAVY_CATEGORIES = new Set(['squat', 'hinge', 'bench', 'press', 'row']);
+
+/** Shift a prescribed RIR `step` notches harder, respecting the floor. */
+const stepRir = (ex: Ex, step: number): string | undefined => {
+  if (step <= 0 || !ex.rir) return ex.rir;
+  const i = RIR_LADDER.indexOf(ex.rir as typeof RIR_LADDER[number]);
+  if (i === -1) return ex.rir; // "never to failure", "hard but upright" — untouched
+  const floor = HEAVY_CATEGORIES.has(ex.category)
+    ? RIR_LADDER.indexOf('1')
+    : RIR_LADDER.length - 1;
+  return RIR_LADDER[Math.min(i + step, floor)];
+};
+
+/**
  * Build the five days for a block.
  *  - `extraSets`: how many of the day's LEADING exercises gain a set
- *    (Block A = 0, Block B = 1, Block C = 2).
+ *    (Block A = 0, Block B = 1, Block C = 2). Exercises marked `fixedSets`
+ *    are skipped and the increase passes to the next one down, so Pull day
+ *    puts its extra sets on the rows rather than stacking pull-up clusters.
+ *  - `rirStep`: how many notches harder than prescribed this block trains.
  *  - `deload`: cap every exercise at 2 sets and rewrite the RIR guidance.
  */
-const buildDays = (opts: { extraSets: number; deload?: boolean }): ProgramDay[] =>
+const buildDays = (opts: { extraSets: number; rirStep?: number; deload?: boolean }): ProgramDay[] =>
   DAY_SPECS.map((spec) => ({
     key: spec.key,
     label: spec.label,
     goal: opts.deload
       ? `${spec.goal} Deload — 2 sets per exercise at ~60% of your last working load.`
       : spec.goal,
-    exercises: spec.exercises.map((ex, i): ProgramExercise => ({
-      ...ex,
-      sets: opts.deload ? 2 : ex.sets + (i < opts.extraSets ? 1 : 0),
-      rir: opts.deload ? '4–5' : ex.rir,
-      cues: opts.deload
-        ? `${ex.cues ?? ''} Deload week — leave 4–5 reps in the tank; this is recovery, not training.`.trim()
-        : ex.cues,
-    })),
+    exercises: ((): ProgramExercise[] => {
+      let remaining = opts.deload ? 0 : opts.extraSets;
+      return spec.exercises.map((ex): ProgramExercise => {
+        const gainsASet = remaining > 0 && !ex.fixedSets;
+        if (gainsASet) remaining -= 1;
+        return {
+          ...ex,
+          sets: opts.deload ? 2 : ex.sets + (gainsASet ? 1 : 0),
+          rir: opts.deload ? '4–5' : stepRir(ex, opts.rirStep ?? 0),
+          // In a working week the technique cue and its emphasis read as one
+          // line. In a DELOAD the emphasis is dropped entirely: "load it
+          // seriously" or "your heaviest press of the week" directly
+          // contradicts the 2-set, 4–5 RIR prescription printed immediately
+          // above it, which is exactly how the card ended up telling you to go
+          // hard and recover at once.
+          cues: opts.deload
+            ? [ex.cues, 'Deload — 2 sets at about 60% of your usual load, 4–5 reps left in the tank.']
+                .filter(Boolean).join(' ')
+            : [ex.cues, ex.emphasis].filter(Boolean).join(' '),
+          emphasis: undefined,
+        };
+      });
+    })(),
   }));
 
 export const PHASES: ProgramPhase[] = [
@@ -419,8 +518,9 @@ export const PHASES: ProgramPhase[] = [
     weeks: [1, 2, 3, 4, 5],
     label: 'Block A — Accumulate (Weeks 1–5)',
     focus:
-      'Start at the bottom of every rep range. Add one rep per set per week. Sit at 2–3 reps in ' +
-      'reserve for weeks 1–2 and drift to 1–2 by week 5.',
+      'Weeks of 14 Sep – 12 Oct. Start at the bottom of every rep range and add one rep per set ' +
+      'per week. Train at the reps in reserve printed on each exercise — this block is about ' +
+      'building the loads you will push in Blocks B and C, so resist going early.',
     days: buildDays({ extraSets: 0 }),
   },
   {
@@ -428,49 +528,46 @@ export const PHASES: ProgramPhase[] = [
     weeks: [6],
     label: 'Week 6 — Deload',
     focus:
-      'Same exercises, 2 sets each, 60% of your week-5 loads, 4–5 reps in reserve. Retest your ' +
-      'max pull-up at the end of the week.',
+      'Week of 19 Oct. Same exercises, 2 sets each, 60% of your week-5 loads, 4–5 reps in ' +
+      'reserve. The only deload before the finish, so take it properly. Retest your max pull-up ' +
+      'at the end of the week.',
     days: buildDays({ extraSets: 0, deload: true }),
   },
   {
     phase: 3,
-    weeks: [7, 8, 9, 10, 11],
-    label: 'Block B — Add a set (Weeks 7–11)',
+    weeks: [7, 8, 9],
+    label: 'Block B — Build (Weeks 7–9)',
     focus:
-      'One extra set on the first exercise of each day. Loads restart 5% below your week-5 top ' +
-      'set, then climb past it. 1–2 reps in reserve throughout.',
-    days: buildDays({ extraSets: 1 }),
+      'Weeks of 26 Oct – 9 Nov. One extra set on the first exercise of each day, and everything ' +
+      'moves one notch harder — where Block A said 2–3 reps in reserve, this block says 2. ' +
+      'Loads restart 5% below your week-5 top set and climb past it inside three weeks.',
+    days: buildDays({ extraSets: 1, rirStep: 1 }),
   },
   {
     phase: 4,
-    weeks: [12],
-    label: 'Week 12 — Deload',
-    focus: 'As week 6. Retest max pull-up.',
-    days: buildDays({ extraSets: 1, deload: true }),
+    weeks: [10, 11],
+    label: 'Block C — Peak (Weeks 10–11)',
+    focus:
+      'Weeks of 16 Nov – 23 Nov. Extra set on the second exercise too, and another notch of ' +
+      'effort: isolation work finishes at 0–1 reps in reserve, heavy barbell lifts stop at 1 and ' +
+      'go no further. Highest volume and highest effort of the block, and only two weeks of it — ' +
+      'that is the trade for finishing in December.',
+    days: buildDays({ extraSets: 2, rirStep: 2 }),
   },
   {
     phase: 5,
-    weeks: [13, 14, 15],
-    label: 'Block C — Peak (Weeks 13–15)',
+    weeks: [12],
+    label: 'Week 12 — Deload & retest',
     focus:
-      'Extra set on the second exercise too. Isolation work goes to 0–1 reps in reserve; ' +
-      'compounds stay at 2. This is the highest-volume stretch of the block — expect it to feel ' +
-      'like it.',
-    days: buildDays({ extraSets: 2 }),
-  },
-  {
-    phase: 6,
-    weeks: [16],
-    label: 'Week 16 — Deload & retest',
-    focus:
-      'Two sets per exercise at 60%. Then retest a heavy set of five on bench, squat and row, ' +
-      'and your max pull-up. Those numbers set the starting loads for the next block.',
+      'Week of 30 Nov, finishing Sunday 6 December. Two sets per exercise at 60%. Then retest a ' +
+      'heavy set of five on bench, squat and row, and your max pull-up. Those numbers are the ' +
+      'starting loads for whatever comes after Christmas.',
     days: buildDays({ extraSets: 2, deload: true }),
   },
 ];
 
 export const getPhaseForWeek = (weekNum: number): ProgramPhase => {
   const p = PHASES.find((ph) => ph.weeks.includes(weekNum));
-  // Past week 16 the block repeats from its peak phase, not the deload.
+  // Past the final week the block repeats from its peak phase, not the deload.
   return p ?? PHASES[PHASES.length - 2];
 };

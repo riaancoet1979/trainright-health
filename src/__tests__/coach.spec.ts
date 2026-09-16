@@ -107,7 +107,7 @@ describe('weeklyReview', () => {
   });
 
   it('keeps the exercise-ID alias mechanism for renamed movements', () => {
-    // Garage Block 16 declares no aliases of its own, but the mechanism is
+    // Garage Block 12 declares no aliases of its own, but the mechanism is
     // what lets history survive an exercise being renamed or replaced, so it
     // is retained and pinned here rather than quietly deleted.
     expect(EXERCISE_ID_ALIASES).toBeDefined();

@@ -6,7 +6,7 @@ import { setProgramStartDate, getSessionLog, updateSessionLog } from '../utils/t
 
 /**
  * Renders the Train tab against the real programme data. These cover the
- * three things Garage Block 16 needs that the previous build could not do:
+ * three things Garage Block 12 needs that the previous build could not do:
  * a per-set RIR field, a per-exercise note that actually persists, and a
  * rest timer driven by each exercise's own prescription.
  */
@@ -35,7 +35,7 @@ afterEach(() => {
 // 2026-06-08 is a Monday → Push day in week 1.
 const MONDAY = new Date('2026-06-08T09:00:00');
 
-describe('Train tab — Garage Block 16', () => {
+describe('Train tab — Garage Block 12', () => {
   it('renders the Push session with its exercises', () => {
     setProgramStartDate('2026-06-08');
     mount(MONDAY);

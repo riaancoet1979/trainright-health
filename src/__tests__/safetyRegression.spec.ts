@@ -70,13 +70,15 @@ describe('H-02 acute symptom screen forces RED', () => {
 // ─────────────────────────────────────────────────────────────────
 
 const blockCPull = () => {
-  const phase = PHASES.find((p) => p.weeks.includes(13))!;
+  // Addressed by LABEL, not by week number — the block length moved from 16
+  // weeks to 12 and week 13 stopped existing, which silently broke this.
+  const phase = PHASES.find((p) => p.label.startsWith('Block C'))!;
   return phase.days.find((d) => d.key === 'pull')!;
 };
 
 describe('H-03 prerequisite gating', () => {
   // The gating ENGINE is retained (it is how a future strict-pull-up track
-  // would be reintroduced), but Garage Block 16 declares no prerequisites:
+  // would be reintroduced), but Garage Block 12 declares no prerequisites:
   // pull-ups are bodyweight clusters from week 1, gated by the cluster rule
   // rather than by a capacity test. These tests pin that down so a stray
   // prerequisite cannot appear unnoticed.

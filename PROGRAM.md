@@ -1,10 +1,49 @@
-# Garage Block 16 — Riaan's Programme & Nutrition Plan
-**Built:** 2026-09-10 · **Replaces:** Calisthenics Foundation 16 (2026-06-05)
+# Garage Block 12 — Riaan's Programme & Nutrition Plan
+**Built:** 2026-09-10 · **Restructured:** 2026-09-16 (16 weeks → 12, calendar-anchored)
+**Replaces:** Calisthenics Foundation 16 (2026-06-05)
+**Runs:** Mon 14 September 2026 → Sun 6 December 2026
 **App:** TrainRight Health (this folder) — the programme below is encoded in `src/data/program.ts`.
 
 ---
 
-## What changed and why
+## Why twelve weeks, not sixteen
+
+The block is anchored to a **finish date**, not to "sixteen weeks from whenever
+you press start". The last week had to be the first week of December 2026.
+Starting Monday **14 September** puts week 12 on the week of Monday
+**30 November**, closing Sunday **6 December**.
+
+Four fewer weeks are paid for by compressing the progression rather than
+cutting the end off it:
+
+- **One mid-block deload instead of two.** Week 6 only. Twelve weeks does not
+  justify two full down-weeks, and the second one used to cost a week of work
+  right before the peak.
+- **Blocks B and C are shorter** — three weeks and two, against five and three.
+- **Every block now steps effort as well as volume.** Previously only the set
+  count moved and RIR was described in prose; now the prescription itself
+  steps one notch down the RIR ladder per block (`rirStep` in
+  `src/data/program.ts`). Block A trains at the printed RIR, Block B one notch
+  harder, Block C one harder again.
+- **Peak volume is unchanged** — the old week 13–15 loading. It is simply
+  reached in week 10 instead of week 13.
+
+Two hard floors survive the compression:
+
+- **Heavy barbell lifts never go below 1 RIR**, whatever the block steps to
+  (`HEAVY_CATEGORIES`). Squat, bench, overhead press, row and RDL. He trains
+  alone with no spotter.
+- **Pull-up clusters never gain a set** (`fixedSets: true`). At a four-rep max
+  the cluster count is the prescription, not a volume dial — progression there
+  is reps, 5×2 → 5×3 → 5×4. A block's extra set passes down to the next
+  eligible exercise, so Pull day puts it on the rows.
+
+`PROGRAM_WEEKS`, `RECOMMENDED_START` and `PROGRAM_FINISH` are exported from
+`src/data/program.ts` and are the single source of truth — the engine, the
+Train tab and the Settings summary all read them rather than hard-coding a
+number, which is how the old `16` ended up in five separate places.
+
+## What changed from the calisthenics block
 
 The previous programme was a 4-day calisthenics block built around a left
 shoulder at 7/10 on overhead and hanging work. That constraint has been
@@ -54,14 +93,18 @@ and any session can be run on any date via the day-key override.
 
 ## Blocks
 
-| Weeks | Block | What changes |
-|---|---|---|
-| 1–5 | **A — Accumulate** | Bottom of every rep range, +1 rep/set/week, 2–3 RIR drifting to 1–2 |
-| 6 | **Deload** | 2 sets each at ~60%, 4–5 RIR. Retest max pull-up. |
-| 7–11 | **B — Add a set** | +1 set on the first exercise of each day, 1–2 RIR |
-| 12 | **Deload** | As week 6 |
-| 13–15 | **C — Peak** | +1 set on the second exercise too; isolation to 0–1 RIR |
-| 16 | **Deload & retest** | Retest heavy 5s on bench, squat, row + max pull-up |
+| Weeks | Dates (from 14 Sep) | Block | What changes |
+|---|---|---|---|
+| 1–5 | 14 Sep – 18 Oct | **A — Accumulate** | Bottom of every rep range, +1 rep/set/week, at the printed RIR |
+| 6 | 19 – 25 Oct | **Deload** | 2 sets each at ~60%, 4–5 RIR. Retest max pull-up. |
+| 7–9 | 26 Oct – 15 Nov | **B — Build** | +1 set per day, and one notch harder: 2–3 RIR becomes 2 |
+| 10–11 | 16 – 29 Nov | **C — Peak** | +2 sets per day, one notch harder again: isolation to 0–1, heavy barbell stops at 1 |
+| 12 | 30 Nov – 6 Dec | **Deload & retest** | Retest heavy 5s on bench, squat, row + max pull-up |
+
+Past week 12 the app keeps working: it rolls back onto the **peak** block, not
+the final deload, and the session header says the block is complete. (The old
+build clamped to the final week instead, which pinned anyone running past the
+finish to two sets at 60% forever with nothing on screen explaining why.)
 
 ## Weekly volume, against target
 
@@ -97,7 +140,8 @@ and still land in range.
    range at target RIR, then +2.5 kg upper / +5 kg lower and back to the bottom.
    Two sessions with no rep added is a stall — drop 10% and rebuild.
 4. **Pull-ups are clusters, never to failure inside a block.** 5×2–3 well short
-   of failure. When 5×3 is easy, go to 5×4. True max only in weeks 6, 12, 16.
+   of failure. When 5×3 is easy, go to 5×4. True max only in weeks 6 and 12.
+   Cluster count never rises with the block — see `fixedSets`.
 5. **Log weight × reps × RIR every set.** Double progression is guesswork
    without last week's numbers.
 

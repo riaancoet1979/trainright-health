@@ -5,10 +5,14 @@ import type { MealSplit } from '../types';
 import {
   getDayTypeTargets, saveDayTypeTargets, getTrainingData,
   setProgramStartDate, importTrainRightBackup, exportAllData, importAllData,
+  getWeekNum,
 } from '../utils/training';
 import { getMealSplit, saveMealSplit } from '../utils/storage';
 import { mergeGarminData } from '../utils/health';
-import { DEFAULT_DAY_TYPE_TARGETS, LEAN_GAIN_TARGETS } from '../data/program';
+import {
+  DEFAULT_DAY_TYPE_TARGETS, LEAN_GAIN_TARGETS,
+  PROGRAM_WEEKS, RECOMMENDED_START, PROGRAM_NAME,
+} from '../data/program';
 import { daysSinceLastExport, BACKUP_NUDGE_DAYS, shouldNudgeBackup } from '../utils/migrations';
 
 interface Props { onSaved: () => void }
@@ -19,6 +23,24 @@ const ProgramSettings = ({ onSaved }: Props) => {
   const [msg, setMsg] = useState('');
   const data = getTrainingData();
   const [startDate, setStartDate] = useState(data.programStartDate ?? '');
+
+  // What the chosen start date actually means today. Computed, not stored, so
+  // it re-reads as soon as the picker changes.
+  const startSummary = (() => {
+    if (!startDate) return `No start date set — ${PROGRAM_NAME} runs ${PROGRAM_WEEKS} weeks from the Monday you pick.`;
+    const wk = getWeekNum(new Date(), startDate);
+    const monday = new Date(startDate + 'T00:00:00');
+    monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
+    const finish = new Date(monday);
+    finish.setDate(finish.getDate() + PROGRAM_WEEKS * 7 - 1);
+    const fmt = (d: Date) => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+    const where = wk === null
+      ? `Starts ${fmt(monday)} — not begun yet.`
+      : wk > PROGRAM_WEEKS
+        ? `Today is week ${wk} — past the end of the block, so it repeats the peak weeks.`
+        : `Today is week ${wk} of ${PROGRAM_WEEKS}.`;
+    return `Snaps to Monday ${fmt(monday)}. ${where} Block finishes ${fmt(finish)}.`;
+  })();
   const fullBackupRef = useRef<HTMLInputElement>(null);
   const garminRef = useRef<HTMLInputElement>(null);
   const oldTrainRightRef = useRef<HTMLInputElement>(null);
@@ -99,11 +121,25 @@ const ProgramSettings = ({ onSaved }: Props) => {
 
       <div className="mb-4">
         <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mr-2">Program start date</label>
-        <input
-          type="date" value={startDate}
-          onChange={(e) => setStartDate(e.target.value)}
-          className="border rounded px-2 py-1 text-sm dark:bg-gray-700 dark:text-white dark:border-gray-600"
-        />
+        <div className="flex flex-wrap items-center gap-2 mt-1">
+          <input
+            type="date" value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+            className="border rounded px-2 py-1 text-sm dark:bg-gray-700 dark:text-white dark:border-gray-600"
+          />
+          {startDate !== RECOMMENDED_START && (
+            <button
+              onClick={() => setStartDate(RECOMMENDED_START)}
+              className="text-xs px-2 py-1 rounded bg-primary-50 dark:bg-primary-900/40 text-primary-700 dark:text-primary-300 font-semibold"
+            >
+              Use {PROGRAM_NAME} start
+            </button>
+          )}
+        </div>
+        {/* A stale start date silently parks you in the wrong week — which is
+            exactly how a deload week showed up as if it were the plan. Say
+            plainly which week this date puts today in, and when it finishes. */}
+        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1.5">{startSummary}</p>
       </div>
 
       <div className="grid grid-cols-5 gap-2 text-xs text-gray-500 dark:text-gray-400 mb-1">

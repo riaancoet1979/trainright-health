@@ -7,7 +7,10 @@ import {
   DAY_KEY_TO_LETTER, LETTER_TO_DAY_KEY,
   getDayTypeForDate, isDayTypeOverridden, setDayTypeOverride,
 } from '../utils/training';
-import { PHASES, getPhaseForWeek, DEFAULT_DAY_TYPE_TARGETS } from '../data/program';
+import {
+  PHASES, getPhaseForWeek, DEFAULT_DAY_TYPE_TARGETS, PROGRAM_WEEKS,
+  RECOMMENDED_START, PROGRAM_FINISH,
+} from '../data/program';
 import type { ProgramExercise } from '../types/training';
 
 beforeEach(() => {
@@ -15,9 +18,35 @@ beforeEach(() => {
 });
 
 describe('program data', () => {
-  it('covers weeks 1–16 across its phases', () => {
+  it('covers every week of the block exactly once, with no gaps', () => {
     const weeks = PHASES.flatMap((p) => p.weeks);
-    expect(weeks.sort((a, b) => a - b)).toEqual(Array.from({ length: 16 }, (_, i) => i + 1));
+    expect(weeks.sort((a, b) => a - b))
+      .toEqual(Array.from({ length: PROGRAM_WEEKS }, (_, i) => i + 1));
+  });
+
+  // The whole point of the 12-week restructure: the block is anchored to a
+  // finish date, not to "16 weeks from whenever you press start". If the
+  // recommended start and the week count ever drift apart, the block stops
+  // landing in the first week of December and nobody notices until November.
+  it('the recommended start puts the final week in the first week of December 2026', () => {
+    const start = new Date(RECOMMENDED_START + 'T00:00:00');
+    expect(start.getDay(), 'recommended start is a Monday').toBe(1);
+    const finalMonday = new Date(start);
+    finalMonday.setDate(finalMonday.getDate() + (PROGRAM_WEEKS - 1) * 7);
+    expect(finalMonday.getMonth()).toBe(10);      // November — the week STARTS 30 Nov
+    expect(finalMonday.getDate()).toBe(30);
+    const finalSunday = new Date(finalMonday);
+    finalSunday.setDate(finalSunday.getDate() + 6);
+    expect(finalSunday.toISOString().slice(0, 10)).toBe(PROGRAM_FINISH);
+    expect(finalSunday.getMonth()).toBe(11);      // December
+    expect(finalSunday.getDate()).toBeLessThanOrEqual(7); // first week of it
+  });
+
+  it('runs exactly one mid-block deload and finishes on a deload & retest', () => {
+    const deloads = PHASES.filter((p) => p.label.toLowerCase().includes('deload'));
+    expect(deloads).toHaveLength(2);
+    expect(deloads[deloads.length - 1].weeks).toEqual([PROGRAM_WEEKS]);
+    expect(deloads[deloads.length - 1].label.toLowerCase()).toContain('retest');
   });
 
   it('every phase has all 5 sessions', () => {
@@ -85,7 +114,7 @@ describe('program data', () => {
     }
   });
 
-  it('Block B adds a set to the first exercise, Block C to the first two', () => {
+  it('Block B adds one set per day and Block C two, skipping fixed-set lifts', () => {
     const blockA = PHASES.find((p) => p.label.startsWith('Block A'))!;
     const blockB = PHASES.find((p) => p.label.startsWith('Block B'))!;
     const blockC = PHASES.find((p) => p.label.startsWith('Block C'))!;
@@ -93,10 +122,74 @@ describe('program data', () => {
       const a = blockA.days.find((d) => d.key === key)!.exercises;
       const b = blockB.days.find((d) => d.key === key)!.exercises;
       const c = blockC.days.find((d) => d.key === key)!.exercises;
-      expect(b[0].sets, `${key} first exercise, Block B`).toBe(a[0].sets + 1);
-      expect(b[1].sets, `${key} second exercise, Block B`).toBe(a[1].sets);
-      expect(c[0].sets, `${key} first exercise, Block C`).toBe(a[0].sets + 1);
-      expect(c[1].sets, `${key} second exercise, Block C`).toBe(a[1].sets + 1);
+      const total = (xs: typeof a) => xs.reduce((n, x) => n + x.sets, 0);
+      expect(total(b), `${key} gains exactly one set in Block B`).toBe(total(a) + 1);
+      expect(total(c), `${key} gains exactly two sets in Block C`).toBe(total(a) + 2);
+      // The increase lands on the leading ELIGIBLE exercises, in order.
+      const eligible = a.map((x, i) => (x.fixedSets ? -1 : i)).filter((i) => i >= 0);
+      expect(b[eligible[0]].sets).toBe(a[eligible[0]].sets + 1);
+      expect(c[eligible[0]].sets).toBe(a[eligible[0]].sets + 1);
+      expect(c[eligible[1]].sets).toBe(a[eligible[1]].sets + 1);
+    }
+  });
+
+  // At a four-rep max with a shoulder that is only recently sound, cluster
+  // COUNT is the prescription, not a volume dial — progression there is reps
+  // (5×2 → 5×3 → 5×4). A block that quietly added a sixth cluster would be
+  // adding shoulder load, not useful work.
+  it('never adds a set to the pull-up clusters in any block', () => {
+    for (const p of PHASES) {
+      const pullup = p.days.find((d) => d.key === 'pull')!
+        .exercises.find((e) => e.category === 'pullup')!;
+      expect(pullup.sets, `pull-up sets in ${p.label}`)
+        .toBe(p.label.toLowerCase().includes('deload') ? 2 : 5);
+    }
+  });
+
+  // Twelve weeks buys fewer weeks of progression, so each block also steps
+  // EFFORT. Without this the compressed block would just be the old one with
+  // four weeks cut out of the middle.
+  it('each working block trains one notch harder than the last', () => {
+    const rank = ['2–3', '2', '1–2', '1', '0–1'];
+    const blockA = PHASES.find((p) => p.label.startsWith('Block A'))!;
+    const blockB = PHASES.find((p) => p.label.startsWith('Block B'))!;
+    const blockC = PHASES.find((p) => p.label.startsWith('Block C'))!;
+    let stepped = 0;
+    for (const key of ['push', 'pull', 'legs', 'upper', 'lower'] as const) {
+      const a = blockA.days.find((d) => d.key === key)!.exercises;
+      const b = blockB.days.find((d) => d.key === key)!.exercises;
+      const c = blockC.days.find((d) => d.key === key)!.exercises;
+      a.forEach((ex, i) => {
+        const ra = rank.indexOf(ex.rir ?? '');
+        if (ra === -1) {
+          // "never to failure" / "hard but upright" are prescriptions, not
+          // ladder positions — they must survive the step untouched.
+          expect(b[i].rir, `${ex.id} in Block B`).toBe(ex.rir);
+          expect(c[i].rir, `${ex.id} in Block C`).toBe(ex.rir);
+          return;
+        }
+        expect(rank.indexOf(b[i].rir ?? ''), `${ex.id} Block B not easier`)
+          .toBeGreaterThanOrEqual(ra);
+        expect(rank.indexOf(c[i].rir ?? ''), `${ex.id} Block C not easier than B`)
+          .toBeGreaterThanOrEqual(rank.indexOf(b[i].rir ?? ''));
+        if (rank.indexOf(c[i].rir ?? '') > ra) stepped++;
+      });
+    }
+    expect(stepped, 'the peak block is harder than the base block').toBeGreaterThan(10);
+  });
+
+  // Training alone in a garage with no spotter. A block that steps effort must
+  // never step a loaded barbell lift past 1 rep in reserve.
+  it('never prescribes a heavy barbell lift below 1 rep in reserve', () => {
+    const heavy = new Set(['squat', 'hinge', 'bench', 'press', 'row']);
+    for (const p of PHASES) {
+      for (const d of p.days) {
+        for (const ex of d.exercises) {
+          if (!heavy.has(ex.category)) continue;
+          expect(ex.rir, `${ex.id} in ${p.label}`).not.toBe('0–1');
+          expect(ex.rir, `${ex.id} in ${p.label}`).not.toBe('0');
+        }
+      }
     }
   });
 });
@@ -107,6 +200,9 @@ describe('week calculation', () => {
     expect(getWeekNum('2026-06-14', '2026-06-08')).toBe(1); // Sunday same week
     expect(getWeekNum('2026-06-15', '2026-06-08')).toBe(2);
     expect(getWeekNum('2026-09-26', '2026-06-08')).toBe(16);
+    // The live block: Monday 14 Sep start → week 12 is the week of 30 Nov.
+    expect(getWeekNum('2026-11-30', RECOMMENDED_START)).toBe(PROGRAM_WEEKS);
+    expect(getWeekNum(PROGRAM_FINISH, RECOMMENDED_START)).toBe(PROGRAM_WEEKS);
   });
 
   it('snaps a mid-week start date to that Monday', () => {
@@ -129,26 +225,32 @@ describe('week calculation', () => {
     expect(getDayKeyForDate('2026-06-14')).toBeNull();    // Sun — rest
   });
 
-  it('resolves sessions to the correct phase', () => {
-    setProgramStartDate('2026-06-08');
-    expect(getSessionForDate('2026-06-08')?.phase).toBe(1);  // week 1  — Block A
-    expect(getSessionForDate('2026-07-15')?.phase).toBe(2);  // week 6  — deload
-    expect(getSessionForDate('2026-07-22')?.phase).toBe(3);  // week 7  — Block B
-    expect(getSessionForDate('2026-08-26')?.phase).toBe(4);  // week 12 — deload
-    expect(getSessionForDate('2026-09-02')?.phase).toBe(5);  // week 13 — Block C
-    expect(getSessionForDate('2026-09-23')?.phase).toBe(6);  // week 16 — deload
-    expect(getPhaseForWeek(11).phase).toBe(3);
+  it('resolves sessions to the correct phase across the live block', () => {
+    setProgramStartDate(RECOMMENDED_START);
+    expect(getSessionForDate('2026-09-14')?.phase).toBe(1);  // week 1  — Block A
+    expect(getSessionForDate('2026-10-12')?.phase).toBe(1);  // week 5  — Block A
+    expect(getSessionForDate('2026-10-19')?.phase).toBe(2);  // week 6  — deload
+    expect(getSessionForDate('2026-10-26')?.phase).toBe(3);  // week 7  — Block B
+    expect(getSessionForDate('2026-11-09')?.phase).toBe(3);  // week 9  — Block B
+    expect(getSessionForDate('2026-11-16')?.phase).toBe(4);  // week 10 — Block C
+    expect(getSessionForDate('2026-11-30')?.phase).toBe(5);  // week 12 — deload & retest
+    expect(getSessionForDate('2026-11-30')?.isPastProgram).toBe(false);
+    expect(getPhaseForWeek(11).phase).toBe(4);
   });
 
-  it('past week 16 repeats the peak block, not the deload', () => {
+  it('past the final week repeats the peak block, not the deload', () => {
     expect(getPhaseForWeek(99).label).toContain('Block C');
+    setProgramStartDate(RECOMMENDED_START);
+    // The week after the finish: still gives a session, flagged as past the block.
+    expect(getSessionForDate('2026-12-07')?.isPastProgram).toBe(true);
+    expect(getSessionForDate('2026-12-07')?.phaseLabel).toContain('Block C');
   });
 });
 
 describe('readiness adjustment', () => {
   // Exercised with synthetic exercises rather than programme data: the
   // adjustment engine still supports painFreeOnly / yellowSkip for future
-  // programmes, but Garage Block 16 sets neither, so asserting against real
+  // programmes, but Garage Block 12 sets neither, so asserting against real
   // days would pass vacuously and prove nothing.
   const ex = (over: Partial<ProgramExercise> & { id: string }): ProgramExercise => ({
     name: over.id, sets: 4, repsSpec: '8–12', equipment: 'Barbell',
@@ -425,5 +527,76 @@ describe('day type and macro targets', () => {
     expect(log.completed).toBe(true);
     expect(log.notes).toBe('trained anyway');
     expect(log.dayTypeOverride).toBe('rest');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────
+// Deload wording. The card used to append "leave 4–5 reps in the tank; this
+// is recovery, not training" onto a cue that already said "load it
+// seriously" — telling the user to go hard and recover in the same sentence.
+// ─────────────────────────────────────────────────────────────────
+
+describe('deload cues do not contradict the prescription', () => {
+  const deloadPhases = PHASES.filter((p) => p.label.toLowerCase().includes('deload'));
+  const workingPhases = PHASES.filter((p) => !p.label.toLowerCase().includes('deload'));
+
+  // Phrases that tell the user to push. None may survive into a deload week.
+  const INTENSITY = [
+    'load it seriously', 'heaviest', 'take it close', 'push these hard',
+    'brutal', 'five short sets',
+  ];
+
+  it('no deload cue contains push-hard language', () => {
+    for (const p of deloadPhases) {
+      for (const d of p.days) {
+        for (const ex of d.exercises) {
+          const cue = (ex.cues ?? '').toLowerCase();
+          for (const phrase of INTENSITY) {
+            expect(cue, `${ex.id} in ${p.label}`).not.toContain(phrase);
+          }
+        }
+      }
+    }
+  });
+
+  it('every deload cue states the deload prescription once', () => {
+    for (const p of deloadPhases) {
+      for (const d of p.days) {
+        for (const ex of d.exercises) {
+          expect(ex.cues, `${ex.id} in ${p.label}`).toContain('Deload');
+          expect(ex.cues!.match(/Deload/g)!.length, `${ex.id} repeats it`).toBe(1);
+        }
+      }
+    }
+  });
+
+  it('a deload cue never claims a set count that differs from the prescription', () => {
+    for (const p of deloadPhases) {
+      for (const d of p.days) {
+        for (const ex of d.exercises) {
+          expect(ex.sets).toBe(2);
+          expect(ex.cues, `${ex.id} in ${p.label}`).not.toMatch(/\bfive\b|\bfour sets\b/i);
+        }
+      }
+    }
+  });
+
+  it('working weeks still carry the emphasis, folded into the cue', () => {
+    const blockA = workingPhases.find((p) => p.label.startsWith('Block A'))!;
+    const row = blockA.days.find((d) => d.key === 'pull')!
+      .exercises.find((e) => e.id === 'bb_row')!;
+    expect(row.cues).toContain('Torso around 45°');          // technique
+    expect(row.cues).toContain('load it seriously');          // emphasis
+    expect(row.cues).not.toContain('Deload');
+  });
+
+  it('emphasis is folded in, never left as a separate field to render twice', () => {
+    for (const p of PHASES) {
+      for (const d of p.days) {
+        for (const ex of d.exercises) {
+          expect(ex.emphasis, `${ex.id} in ${p.label}`).toBeUndefined();
+        }
+      }
+    }
   });
 });

@@ -65,7 +65,7 @@ type StepFn = (raw: unknown) => unknown;
 
 /**
  * health_training_v1 v1 → v2 — Calisthenics Foundation 16 (4 days, keyed by
- * weekday) → Garage Block 16 (5 sessions, keyed by movement).
+ * weekday) → Garage Block 12 (5 sessions, keyed by movement).
  *
  * Rewrites every log's `dayKey` and `dayKeyOverride` onto the new session
  * keys so historical sessions keep resolving against the programme and keep

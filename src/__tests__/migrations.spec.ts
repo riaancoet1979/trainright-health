@@ -105,7 +105,7 @@ describe('last-export tracking', () => {
 
 // ─────────────────────────────────────────────────────────────────
 // health_training_v1 v1 → v2
-// Calisthenics Foundation 16 (weekday keys) → Garage Block 16 (session keys)
+// Calisthenics Foundation 16 (weekday keys) → Garage Block 12 (session keys)
 // ─────────────────────────────────────────────────────────────────
 
 describe('health_training_v1 v1→v2 day-key migration', () => {

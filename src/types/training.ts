@@ -3,7 +3,7 @@
 // ============================================================
 
 /**
- * The five sessions of Garage Block 16, trained in this order:
+ * The five sessions of Garage Block 12, trained in this order:
  * Push → Pull → Legs → Upper → Lower.
  */
 export type SessionKey = 'push' | 'pull' | 'legs' | 'upper' | 'lower';
@@ -73,9 +73,24 @@ export interface ProgramExercise {
    */
   restSeconds?: number;
   rir?: string; // prescribed reps in reserve, e.g. "2–3"
+  /** Technique only — true in EVERY week, deloads included. */
   cues?: string;
+  /**
+   * Intensity or context ("your heaviest press of the week", "load it
+   * seriously"). Shown only in working weeks and DROPPED in deloads, where it
+   * would contradict the 2-set, 4–5 RIR prescription sitting right above it.
+   */
+  emphasis?: string;
   regression?: string;
   progression?: string;
+  /**
+   * Exempt from a block's set increase. The set count is part of the
+   * prescription itself, not a volume dial — pull-up clusters progress by
+   * REPS (5×2 → 5×3 → 5×4), and adding a sixth cluster at a four-rep max
+   * just buys shoulder load for no extra useful work. The block's extra set
+   * moves to the next eligible exercise on the day instead of being lost.
+   */
+  fixedSets?: boolean;
   /** Only perform if shoulder pain ≤ 2/10 on the day. */
   painFreeOnly?: boolean;
   /** Dropped when readiness is Yellow. */

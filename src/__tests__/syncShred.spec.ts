@@ -179,7 +179,7 @@ describe('shredStore — user settings', () => {
 // written locally and silently never leaves the device.
 // ─────────────────────────────────────────────────────────────────
 
-describe('sync field coverage for Garage Block 16', () => {
+describe('sync field coverage for Garage Block 12', () => {
   it('carries the per-set RIR', () => {
     const records = shredStore('health_training_v1', {
       programStartDate: '2026-06-08',
