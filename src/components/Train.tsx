@@ -7,8 +7,9 @@ import {
   applyPrerequisites, effectiveReadiness,
   getLastExerciseLog, getLastExerciseNote, setProgramStartDate, getTrainingData, addBodyMetric,
   latestBodyweight, getTargetsForDate, dateKey, getDayKeyForDate,
-  getNextRotationDayKey, getSpacingGuards, DAY_KEY_TO_LETTER, getWeekNum,
+  getNextRotationDayKey, getSpacingGuards, DAY_KEY_TO_LETTER, getWeekNum, isSetLogged,
 } from '../utils/training';
+import type { LoggedSet } from '../types/training';
 import {
   WARMUP, SESSION_NOTE, PROGRAM_NAME, PHASES, getPhaseForWeek, RECOMMENDED_START,
   PROGRAM_NOTES, WEEKLY_VOLUME, VOLUME_NOTE, SWAPS,
@@ -218,6 +219,25 @@ const Train = ({ selectedDate, onUpdate }: TrainProps) => {
       nowDone = sets[setIdx].done;
     });
     if (nowDone) restTimer.start(restSeconds);
+    refresh();
+  };
+
+  /** Copy last session's weight and reps into this session's EMPTY fields.
+   *  Never overwrites anything already typed, never ticks a set, never copies
+   *  RIR — that is what you felt today, not last week. Extra sets (Block B/C
+   *  add one) take the last logged set's numbers. */
+  const fillFromLast = (exId: string, setCount: number, lastSets: LoggedSet[]) => {
+    if (!lastSets.length) return;
+    updateSessionLog(selectedDate, (l) => {
+      if (!l.exercises[exId]) l.exercises[exId] = { sets: [] };
+      const sets = l.exercises[exId].sets;
+      while (sets.length < setCount) sets.push({ weight: '', reps: '', done: false });
+      for (let i = 0; i < setCount; i++) {
+        const src = lastSets[i] ?? lastSets[lastSets.length - 1];
+        if (!sets[i].weight && src.weight) sets[i].weight = src.weight;
+        if (!sets[i].reps && src.reps) sets[i].reps = src.reps;
+      }
+    });
     refresh();
   };
 
@@ -435,6 +455,7 @@ const Train = ({ selectedDate, onUpdate }: TrainProps) => {
           const elog = exLog(ex.id);
           const last = getLastExerciseLog(ex.id, selectedDate);
           const lastNote = last ? getLastExerciseNote(ex.id, selectedDate) : null;
+          const lastSets = last ? last.sets.filter(isSetLogged) : [];
           return (
             <div key={ex.id} className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow">
               <div className="flex justify-between items-start flex-wrap gap-1">
@@ -463,9 +484,20 @@ const Train = ({ selectedDate, onUpdate }: TrainProps) => {
                   )}
                 </div>
                 {last && (
-                  <div className="text-xs text-gray-400 dark:text-gray-500 text-right">
-                    Last ({last.date}):<br />
-                    {last.sets.filter((s) => s.done).map((s) => `${s.weight || 'BW'}×${s.reps}`).join(', ')}
+                  <div className="text-xs text-right">
+                    <div className="text-gray-500 dark:text-gray-400">
+                      Last ({format(new Date(`${last.date}T12:00:00`), 'd MMM')}{last.deload ? ', deload' : ''}):
+                    </div>
+                    <div className="font-semibold text-gray-700 dark:text-gray-200" data-testid="last-sets">
+                      {lastSets.map((s) => `${s.weight || 'BW'}×${s.reps || '?'}${s.rir ? ` @${s.rir}` : ''}`).join(', ')}
+                    </div>
+                    <button
+                      onClick={() => fillFromLast(ex.id, ex.adjustedSets, lastSets)}
+                      className="mt-1 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline"
+                      aria-label={`Fill ${ex.name} from last session`}
+                    >
+                      Fill from last
+                    </button>
                   </div>
                 )}
               </div>
@@ -474,7 +506,9 @@ const Train = ({ selectedDate, onUpdate }: TrainProps) => {
               <div className="mt-3 space-y-1.5">
                 {Array.from({ length: ex.adjustedSets }).map((_, i) => {
                   const s = elog?.sets[i];
-                  const lastSet = last?.sets[i];
+                  // Extra sets in Block B/C have no partner last time — show the
+                  // last logged set rather than a bare "kg".
+                  const lastSet = lastSets[i] ?? lastSets[lastSets.length - 1];
                   return (
                     <div key={i} className="flex items-center gap-2">
                       <span className="w-10 text-xs text-gray-500 dark:text-gray-400">Set {i + 1}</span>

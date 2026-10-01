@@ -6,10 +6,11 @@ import {
   getNextRotationDayKey, getSpacingGuards, updateSessionLog,
   DAY_KEY_TO_LETTER, LETTER_TO_DAY_KEY,
   getDayTypeForDate, isDayTypeOverridden, setDayTypeOverride,
+  getLastExerciseLog, isSetLogged,
 } from '../utils/training';
 import {
   PHASES, getPhaseForWeek, DEFAULT_DAY_TYPE_TARGETS, PROGRAM_WEEKS,
-  RECOMMENDED_START, PROGRAM_FINISH,
+  RECOMMENDED_START, PROGRAM_FINISH, WEEKLY_VOLUME, isDeloadWeek,
 } from '../data/program';
 import type { ProgramExercise } from '../types/training';
 
@@ -597,6 +598,78 @@ describe('deload cues do not contradict the prescription', () => {
           expect(ex.emphasis, `${ex.id} in ${p.label}`).toBeUndefined();
         }
       }
+    }
+  });
+});
+
+describe('last-session carry-over', () => {
+  it('counts a set with reps typed in as logged, even if the circle was never ticked', () => {
+    expect(isSetLogged({ weight: '60', reps: '8', done: false })).toBe(true);
+    expect(isSetLogged({ weight: '', reps: '', done: true })).toBe(true);
+    expect(isSetLogged({ weight: '60', reps: '', done: false })).toBe(false);
+    expect(isSetLogged({ weight: '', reps: '  ', done: false })).toBe(false);
+  });
+
+  it('carries EVERY exercise into the next week, not only the ticked one', () => {
+    setProgramStartDate('2026-06-08');
+    updateSessionLog('2026-06-08', (l) => {
+      l.exercises['bb_bench'] = { sets: [{ weight: '80', reps: '6', done: true }] };
+      l.exercises['bb_ohp'] = { sets: [{ weight: '40', reps: '8', rir: '2', done: false }] };
+      l.exercises['db_lateral'] = { sets: [{ weight: '10', reps: '15', done: false }] };
+    });
+    for (const id of ['bb_bench', 'bb_ohp', 'db_lateral']) {
+      const last = getLastExerciseLog(id, '2026-06-15');
+      expect(last?.date).toBe('2026-06-08');
+    }
+    expect(getLastExerciseLog('bb_ohp', '2026-06-15')?.sets[0].weight).toBe('40');
+  });
+
+  it('skips a deload week when a working week exists, but falls back to it when alone', () => {
+    setProgramStartDate('2026-06-08');
+    // Week 5 Monday, then the week-6 deload Monday.
+    updateSessionLog('2026-07-06', (l) => {
+      l.exercises['bb_bench'] = { sets: [{ weight: '85', reps: '8', done: true }] };
+    });
+    updateSessionLog('2026-07-13', (l) => {
+      l.exercises['bb_bench'] = { sets: [{ weight: '50', reps: '5', done: true }] };
+      l.exercises['db_lateral'] = { sets: [{ weight: '6', reps: '15', done: true }] };
+    });
+    expect(isDeloadWeek(6)).toBe(true);
+    expect(isDeloadWeek(5)).toBe(false);
+    const bench = getLastExerciseLog('bb_bench', '2026-07-20');
+    expect(bench?.date).toBe('2026-07-06');
+    expect(bench?.deload).toBe(false);
+    const lateral = getLastExerciseLog('db_lateral', '2026-07-20');
+    expect(lateral?.date).toBe('2026-07-13');
+    expect(lateral?.deload).toBe(true);
+  });
+});
+
+describe('arm and rear-delt additions', () => {
+  const blockA = PHASES[0].days;
+  const day = (key: string) => blockA.find((d) => d.key === key)!;
+
+  it('Pull adds incline curls; Upper adds rear-delt raises and a third hammer-curl set', () => {
+    expect(day('pull').exercises.find((e) => e.id === 'incline_db_curl')?.sets).toBe(2);
+    expect(day('upper').exercises.find((e) => e.id === 'rear_delt_raise')?.sets).toBe(3);
+    expect(day('upper').exercises.find((e) => e.id === 'db_hammer_curl')?.sets).toBe(3);
+  });
+
+  it('direct biceps and rear-delt sets match the volume table', () => {
+    const direct = (ids: string[]) => blockA.flatMap((d) => d.exercises)
+      .filter((e) => ids.includes(e.id)).reduce((n, e) => n + e.sets, 0);
+    const biceps = WEEKLY_VOLUME.find((v) => v.muscle === 'Biceps')!;
+    const rear = WEEKLY_VOLUME.find((v) => v.muscle === 'Rear delts')!;
+    expect(direct(['ez_curl', 'incline_db_curl', 'db_hammer_curl'])).toBe(biceps.direct);
+    expect(direct(['rear_delt_flye', 'rear_delt_raise'])).toBe(rear.direct);
+    expect(biceps.fractional).toBeLessThanOrEqual(biceps.targetHigh);
+    expect(rear.fractional).toBeLessThanOrEqual(rear.targetHigh);
+  });
+
+  it('every exercise id is unique within a day', () => {
+    for (const d of blockA) {
+      const ids = d.exercises.map((e) => e.id);
+      expect(new Set(ids).size).toBe(ids.length);
     }
   });
 });

@@ -74,10 +74,10 @@ days, every muscle twice.
 | Day | Session | Focus | Sets |
 |---|---|---|---|
 | Mon | **Push** | Chest, shoulders, triceps | 19 |
-| Tue | **Pull** | Back, rear delts, biceps | 20 |
+| Tue | **Pull** | Back, rear delts, biceps | 22 |
 | Wed | **Legs** | Quad-led, calves, core | 17 |
 | Thu | *rest* | | |
-| Fri | **Upper** | Second dose — lighter, higher rep | 18 |
+| Fri | **Upper** | Second dose — lighter, higher rep | 21 |
 | Sat | **Lower + Core** | Hinge-led, unilateral, carries | 18 |
 | Sun | *rest* | | |
 
@@ -117,14 +117,22 @@ finish to two sets at 60% forever with nothing on screen explaining why.)
 | Side delts | 8 | 12 | 10–16 |
 | Calves | 8 | 8 | 8–12 |
 | Triceps | 7 | 12 | 8–14 |
-| Biceps | 5 | 11 | 8–12 |
-| Rear delts | 3 | 7 | 6–10 |
+| Biceps | 8 | 14 | 8–14 |
+| Rear delts | 6 | 10 | 6–10 |
 | Core | 5 | 7 | 6–10 |
 
 Indirect sets count as half — a barbell row is a full set for back and half a
 set for biceps. That half-counting method predicted real-world growth better
-than any other in the 2025 analysis, which is why arms get no dedicated day
-and still land in range.
+than any other in the 2025 analysis, which is why arms get no dedicated day.
+
+**Arm and rear-delt additions (1 Oct 2026, week 3).** Biceps (5 direct) and
+rear delts (3 direct) were the two lowest direct counts in the block. Added:
+Incline Dumbbell Curl 2×10–15 on Pull (stretch-position curl), Bent-Over
+Rear-Delt Raise 3×15–25 on Upper (second rear-delt dose, three days after
+Pull), and Hammer Curl 2 → 3 sets on Upper. Biceps go to 8 direct / 14
+fractional (target widened to 8–14, matching triceps), rear delts to 6 / 10.
+All three are isolation work at the end of the session, so they never gain a
+block set — Block B/C extra sets still land on the leading compounds.
 
 ## Rules encoded in the app
 
@@ -143,7 +151,12 @@ and still land in range.
    of failure. When 5×3 is easy, go to 5×4. True max only in weeks 6 and 12.
    Cluster count never rises with the block — see `fixedSets`.
 5. **Log weight × reps × RIR every set.** Double progression is guesswork
-   without last week's numbers.
+   without last week's numbers. A set counts as logged once its **reps** are
+   filled in — ticking the circle is optional (it starts the rest timer).
+   Each exercise shows last session's sets in bold with a **Fill from last**
+   button that copies weight × reps into today's empty fields. Deload weeks
+   (6 and 12) are skipped when looking up "last", so week 7 starts from your
+   week-5 numbers, not the 60% loads.
 
 Full text of each rule lives in `PROGRAM_NOTES` in `src/data/program.ts` and
 renders in the app under "Programme notes".

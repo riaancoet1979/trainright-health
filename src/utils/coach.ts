@@ -10,7 +10,7 @@ import { format } from 'date-fns';
 import { getAllDailyEntries } from './storage';
 import { getHealthMetrics } from './health';
 import {
-  getTrainingData, getSessionForDate, getTargetsForDate, dateKey, getWeekNum,
+  getTrainingData, getSessionForDate, getTargetsForDate, dateKey, getWeekNum, isSetLogged,
 } from './training';
 import { getPhaseForWeek } from '../data/program';
 import type { SessionLog, LoggedSet } from '../types/training';
@@ -267,7 +267,7 @@ export const weeklyReview = (dateInWeek: Date | string): WeeklyReview => {
         const top = topOfRange(ex.repsSpec);
         if (!top) continue;
         const instances = allLogs
-          .filter(([, l]) => setsForExercise(l, ex.id)?.some((s) => s.done))
+          .filter(([, l]) => setsForExercise(l, ex.id)?.some(isSetLogged))
           .slice(-2);
         if (instances.length < 2) continue;
         // M-05: require ALL prescribed sets to be done at top-of-range, not
@@ -275,7 +275,7 @@ export const weeklyReview = (dateInWeek: Date | string): WeeklyReview => {
         // sets at 12 reps; the design rule is "all sets at the top of the
         // range" so the off-by-one was a real bug.
         const allAtTop = instances.every(([, l]) => {
-          const sets = (setsForExercise(l, ex.id) ?? []).filter((s) => s.done);
+          const sets = (setsForExercise(l, ex.id) ?? []).filter(isSetLogged);
           return sets.length >= ex.sets && sets.every((s) => {
             const reps = parseInt(s.reps, 10);
             return !Number.isNaN(reps) && reps >= top;

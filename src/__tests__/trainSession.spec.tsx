@@ -145,4 +145,25 @@ describe('Train tab — Garage Block 12', () => {
     const w = container.querySelector('[aria-label="Set 1 weight"]') as HTMLInputElement;
     expect(w.value).toBe('60');
   });
+  it("shows last week's numbers for every exercise and fills them on request", () => {
+    setProgramStartDate('2026-06-08');
+    // Week 1: bench ticked, OHP typed but never ticked — the old build lost OHP.
+    updateSessionLog('2026-06-08', (l) => {
+      l.exercises['bb_bench'] = { sets: [{ weight: '80', reps: '6', done: true }] };
+      l.exercises['bb_ohp'] = { sets: [
+        { weight: '40', reps: '8', rir: '2', done: false },
+        { weight: '40', reps: '7', done: false },
+      ] };
+    });
+    mount(new Date('2026-06-15T09:00:00')); // week 2 Push
+    const lasts = Array.from(container.querySelectorAll('[data-testid="last-sets"]')).map((n) => n.textContent);
+    expect(lasts).toContain('80×6');
+    expect(lasts).toContain('40×8 @2, 40×7');
+
+    const fill = container.querySelector('[aria-label="Fill Barbell Overhead Press from last session"]') as HTMLButtonElement;
+    act(() => { fill.click(); });
+    const ohp = getSessionLog('2026-06-15')?.exercises['bb_ohp']?.sets ?? [];
+    expect(ohp.map((s) => `${s.weight}x${s.reps}`)).toEqual(['40x8', '40x7', '40x7']); // 3rd set reuses the last
+    expect(ohp.every((s) => !s.done && !s.rir)).toBe(true);
+  });
 });

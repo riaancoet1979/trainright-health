@@ -12,7 +12,7 @@ import type {
   ProgramExercise, MacroTargets, DayTypeTargets, BodyMetric, LoggedSet,
   RedFlagState, SessionLetter,
 } from '../types/training';
-import { PHASES, getPhaseForWeek, DEFAULT_DAY_TYPE_TARGETS, PROGRAM_WEEKS } from '../data/program';
+import { PHASES, getPhaseForWeek, DEFAULT_DAY_TYPE_TARGETS, PROGRAM_WEEKS, isDeloadWeek } from '../data/program';
 import { getUserSettings, saveUserSettings } from './storage';
 import { markExported } from './migrations';
 import { writeStore } from '../sync/writeStore';
@@ -353,7 +353,7 @@ export const meetsPrerequisite = (
   if (candidates.length < 2) return false;
   return candidates.every(([, log]) => {
     const sets = log.exercises[ex.prerequisite!.sourceExerciseId].sets;
-    const doneSets = sets.filter((s) => s.done);
+    const doneSets = sets.filter(isSetLogged);
     if (doneSets.length < requiredSets) return false;
     return doneSets.every((s) => {
       const reps = parseInt(s.reps, 10);
@@ -460,19 +460,38 @@ export const updateSessionLog = (
   return d.logs[key];
 };
 
-/** Last logged sets for an exercise before a date — for placeholder prefills only. */
+/**
+ * A set counts as performed when it was ticked OR has reps typed in.
+ *
+ * Requiring the tick alone is why last week's numbers vanished: weight and
+ * reps typed without tapping the circle were saved but never read back, so
+ * only the exercise that happened to get ticked (usually the first, to start
+ * the rest timer) carried into the next week.
+ */
+export const isSetLogged = (s: LoggedSet | undefined | null): boolean =>
+  !!s && (s.done || String(s.reps ?? '').trim() !== '');
+
+/**
+ * Last logged sets for an exercise before a date. Deload weeks are skipped
+ * when a working week exists — their 60% loads are not the numbers to beat —
+ * but are still returned if they are the only history there is.
+ */
 export const getLastExerciseLog = (
   exId: string,
   beforeDate: Date | string,
-): { date: string; sets: LoggedSet[] } | null => {
+): { date: string; sets: LoggedSet[]; deload: boolean } | null => {
   const d = getTrainingData();
   const before = dateKey(beforeDate);
   const dates = Object.keys(d.logs).filter((k) => k < before).sort().reverse();
+  let deloadFallback: { date: string; sets: LoggedSet[]; deload: boolean } | null = null;
   for (const k of dates) {
-    const ex = d.logs[k].exercises[exId];
-    if (ex && ex.sets.some((s) => s.done)) return { date: k, sets: ex.sets };
+    const ex = d.logs[k].exercises?.[exId];
+    if (!ex || !Array.isArray(ex.sets) || !ex.sets.some(isSetLogged)) continue;
+    const hit = { date: k, sets: ex.sets, deload: isDeloadWeek(d.logs[k].weekNum) };
+    if (!hit.deload) return hit;
+    deloadFallback ??= hit;
   }
-  return null;
+  return deloadFallback;
 };
 
 /** Last per-exercise NOTE before a date — shown under the note box so the

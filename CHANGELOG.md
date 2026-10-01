@@ -1,5 +1,31 @@
 # Changelog
 
+## 2026-10-01 — Last-session carry-over fix, arm & rear-delt volume
+
+### Fixed — last week's numbers not carrying over
+- Root cause: `getLastExerciseLog` only counted sets whose circle had been
+  ticked. Weight and reps typed without ticking were saved and synced but never
+  read back, so only an exercise that happened to be ticked (usually the first,
+  to start the rest timer) showed up the following week.
+- New `isSetLogged()` — a set counts when ticked OR when reps are filled in.
+  Used by the last-session lookup, the prerequisite check and the Coach
+  progression detector, so all three agree.
+- Deload weeks (new `deload` flag on `ProgramPhase`, `isDeloadWeek()`) are
+  skipped when a working week exists; returned only as a fallback.
+- Train tab: last session's sets shown in bold with RIR and date, a
+  **Fill from last** button per exercise (fills empty weight/reps only, never
+  ticks, never copies RIR), and extra Block B/C sets fall back to the last
+  logged set for their placeholder.
+
+### Programme — arm and rear-delt additions
+- Pull: + Incline Dumbbell Curl 2×10–15.
+- Upper: + Bent-Over Rear-Delt Raise 3×15–25; Hammer Curl 2 → 3 sets.
+- Weekly volume: biceps 5 → 8 direct (14 fractional, target 8–14); rear delts
+  3 → 6 direct (10 fractional).
+
+### Tests
+- 7 new tests across `training.spec` and `trainSession.spec`; full suite green.
+
 ## 1.0.0 — 2026-06-10
 
 ### Phase 1 — Garmin auto-sync (Option A)

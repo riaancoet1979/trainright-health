@@ -209,15 +209,16 @@ export const WEEKLY_VOLUME: VolumeRow[] = [
   { muscle: 'Side delts', direct: 8, fractional: 12, targetLow: 10, targetHigh: 16 },
   { muscle: 'Calves', direct: 8, fractional: 8, targetLow: 8, targetHigh: 12 },
   { muscle: 'Triceps', direct: 7, fractional: 12, targetLow: 8, targetHigh: 14 },
-  { muscle: 'Biceps', direct: 5, fractional: 11, targetLow: 8, targetHigh: 12 },
-  { muscle: 'Rear delts', direct: 3, fractional: 7, targetLow: 6, targetHigh: 10 },
+  { muscle: 'Biceps', direct: 8, fractional: 14, targetLow: 8, targetHigh: 14 },
+  { muscle: 'Rear delts', direct: 6, fractional: 10, targetLow: 6, targetHigh: 10 },
   { muscle: 'Core', direct: 5, fractional: 7, targetLow: 6, targetHigh: 10 },
 ];
 
 export const VOLUME_NOTE =
   'Indirect sets count as half. A barbell row is a full set for back and half a set for biceps — ' +
   'that half-counting method predicted real-world growth better than any other in the 2025 ' +
-  'dose-response analysis, which is why arms get no dedicated day here and still land in range.';
+  'dose-response analysis. Arms still get no dedicated day, but biceps and rear delts now carry ' +
+  'direct work on two days each — the two muscles the indirect sets alone left at the bottom of range.';
 
 /** Swaps to reach for when a lift bothers a joint or stalls twice. */
 export interface Swap { from: string; to: string }
@@ -317,6 +318,13 @@ const PULL: Ex[] = [
     equipment: 'EZ bar', category: 'isolation', rest: '90 s', restSeconds: 90, rir: '1',
     cues: 'Elbows pinned to the ribs. No swing — if the hips move, the weight is wrong.',
   },
+  {
+    id: 'incline_db_curl', name: 'Incline Dumbbell Curl', sets: 2, repsSpec: '10–15',
+    equipment: 'Dumbbells + incline bench', category: 'isolation', rest: '90 s', restSeconds: 90, rir: '0–1',
+    leftFocus: true,
+    cues: 'Bench at about 45°, arms hanging straight down behind the torso. Left arm sets the reps.',
+    emphasis: 'Loads the biceps at full stretch — the position the EZ curl never reaches.',
+  },
 ];
 
 const LEGS: Ex[] = [
@@ -377,7 +385,13 @@ const UPPER: Ex[] = [
     emphasis: 'Lighter than Push day, more reps — side delts recover fast and tolerate this frequency well.',
   },
   {
-    id: 'db_hammer_curl', name: 'Dumbbell Hammer Curl', sets: 2, repsSpec: '10–15',
+    id: 'rear_delt_raise', name: 'Bent-Over Rear-Delt Raise', sets: 3, repsSpec: '15–25',
+    equipment: 'Dumbbells', category: 'isolation', rest: '90 s', restSeconds: 90, rir: '0–1',
+    cues: 'Hinge until the torso is near parallel, slight bend in the elbows, lead with the pinkies. Light — no swing.',
+    emphasis: 'Second rear-delt dose of the week, three days after Pull.',
+  },
+  {
+    id: 'db_hammer_curl', name: 'Dumbbell Hammer Curl', sets: 3, repsSpec: '10–15',
     equipment: 'Dumbbells', category: 'isolation', rest: '90 s', restSeconds: 90, rir: '1',
     cues: 'Neutral grip hits the brachialis, which is what actually pushes the bicep up.',
   },
@@ -527,6 +541,7 @@ export const PHASES: ProgramPhase[] = [
     phase: 2,
     weeks: [6],
     label: 'Week 6 — Deload',
+    deload: true,
     focus:
       'Week of 19 Oct. Same exercises, 2 sets each, 60% of your week-5 loads, 4–5 reps in ' +
       'reserve. The only deload before the finish, so take it properly. Retest your max pull-up ' +
@@ -558,6 +573,7 @@ export const PHASES: ProgramPhase[] = [
     phase: 5,
     weeks: [12],
     label: 'Week 12 — Deload & retest',
+    deload: true,
     focus:
       'Week of 30 Nov, finishing Sunday 6 December. Two sets per exercise at 60%. Then retest a ' +
       'heavy set of five on bench, squat and row, and your max pull-up. Those numbers are the ' +
@@ -565,6 +581,10 @@ export const PHASES: ProgramPhase[] = [
     days: buildDays({ extraSets: 2, deload: true }),
   },
 ];
+
+/** Deload weeks run at ~60% — their loads are not "last week's numbers". */
+export const isDeloadWeek = (weekNum: number): boolean =>
+  PHASES.some((ph) => ph.deload && ph.weeks.includes(weekNum));
 
 export const getPhaseForWeek = (weekNum: number): ProgramPhase => {
   const p = PHASES.find((ph) => ph.weeks.includes(weekNum));

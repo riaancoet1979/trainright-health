@@ -127,6 +127,8 @@ export interface ProgramPhase {
   weeks: number[];
   label: string;
   focus: string;
+  /** Deload week — 2 sets at ~60%, so excluded from "last session" lookups. */
+  deload?: boolean;
   days: ProgramDay[];
 }
 
