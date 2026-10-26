@@ -945,7 +945,7 @@ const NextSessionPreviewCard = ({ date, dayKey }: NextSessionPreviewProps) => {
         Rotation queues up <strong>{day.label}</strong>. {day.goal}
       </p>
       <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-        Today: walk, sleep, protein 190 g. The session log is ready when you are.
+        Today: walk, sleep, protein 210 g. The session log is ready when you are.
       </p>
     </div>
   );
@@ -981,7 +981,7 @@ const CoachNotesBanner = () => {
             <li>Log <strong>weight × reps × RIR</strong> for every set. Double progression is guesswork without last week's numbers.</li>
             <li>Ticking a set starts that exercise's own rest timer. Nothing past 90 s adds growth on isolation work.</li>
             <li>Pull-ups are clusters — <strong>never to failure</strong> inside a block. Retest a max in weeks 6 and 12.</li>
-            <li>Protein 190 g daily, including rest days — carbs are the only thing that moves.</li>
+            <li>Protein 210 g daily, including rest days — carbs are the only thing that moves.</li>
           </ul>
         </div>
         <button

@@ -6,11 +6,12 @@ import {
   getNextRotationDayKey, getSpacingGuards, updateSessionLog,
   DAY_KEY_TO_LETTER, LETTER_TO_DAY_KEY,
   getDayTypeForDate, isDayTypeOverridden, setDayTypeOverride,
-  getLastExerciseLog, isSetLogged,
+  getLastExerciseLog, isSetLogged, getDayTypeTargets, saveDayTypeTargets,
 } from '../utils/training';
 import {
   PHASES, getPhaseForWeek, DEFAULT_DAY_TYPE_TARGETS, PROGRAM_WEEKS,
   RECOMMENDED_START, PROGRAM_FINISH, WEEKLY_VOLUME, isDeloadWeek,
+  LEAN_GAIN_TARGETS, LEAN_GAIN_TARGETS_V1,
 } from '../data/program';
 import type { ProgramExercise } from '../types/training';
 
@@ -671,5 +672,30 @@ describe('arm and rear-delt additions', () => {
       const ids = d.exercises.map((e) => e.id);
       expect(new Set(ids).size).toBe(ids.length);
     }
+  });
+});
+
+describe('lean-gain targets', () => {
+  it('keep calories at 2,401 / 2,201 with 210 g protein', () => {
+    const { training, rest } = LEAN_GAIN_TARGETS;
+    const kcal = (m: typeof training) => m.dailyProtein * 4 + m.dailyCarbs * 4 + m.dailyFats * 9;
+    expect(kcal(training)).toBe(2401);
+    expect(kcal(rest)).toBe(2201);
+    expect(training.dailyProtein).toBe(210);
+    expect(rest.dailyProtein).toBe(210);
+  });
+
+  it('moves someone on the original lean-gain preset to the current one', () => {
+    saveDayTypeTargets(LEAN_GAIN_TARGETS_V1);
+    expect(getDayTypeTargets()).toEqual(LEAN_GAIN_TARGETS);
+  });
+
+  it('leaves customised targets alone', () => {
+    const custom = {
+      training: { ...LEAN_GAIN_TARGETS_V1.training, dailyCarbs: 260 },
+      rest: LEAN_GAIN_TARGETS_V1.rest,
+    };
+    saveDayTypeTargets(custom);
+    expect(getDayTypeTargets()).toEqual(custom);
   });
 });

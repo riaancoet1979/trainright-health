@@ -87,12 +87,23 @@ export const DEFAULT_DAY_TYPE_TARGETS: DayTypeTargets = {
 };
 
 /**
- * Lean-gain targets to switch to when body fat is ~15–16%. Same shape: protein
- * and fat unchanged from the recomp numbers, carbs carry the surplus.
- *   Training  190×4 + 255×4 + 69×9 = 2,401 kcal
- *   Rest      190×4 + 205×4 + 69×9 = 2,201 kcal
+ * Lean-gain targets (updated 2026-10-26). Protein raised to ~2.4 g/kg at 88 kg,
+ * in line with Vargas-Molina et al. 2026 (2.5 g/kg recomp study); calories
+ * unchanged, the extra protein is paid for with a little carb and fat.
+ *   Training  210×4 + 244×4 + 65×9 = 840 + 976 + 585 = 2,401 kcal
+ *   Rest      210×4 + 194×4 + 65×9 = 840 + 776 + 585 = 2,201 kcal
  */
 export const LEAN_GAIN_TARGETS: DayTypeTargets = {
+  training: { dailyCalories: 2401, dailyProtein: 210, dailyCarbs: 244, dailyFats: 65 },
+  rest: { dailyCalories: 2201, dailyProtein: 210, dailyCarbs: 194, dailyFats: 65 },
+};
+
+/**
+ * The first lean-gain preset (190 P / 69 F). Anyone still on exactly these
+ * numbers is moved to LEAN_GAIN_TARGETS when targets are read; customised
+ * targets are left alone.
+ */
+export const LEAN_GAIN_TARGETS_V1: DayTypeTargets = {
   training: { dailyCalories: 2401, dailyProtein: 190, dailyCarbs: 255, dailyFats: 69 },
   rest: { dailyCalories: 2201, dailyProtein: 190, dailyCarbs: 205, dailyFats: 69 },
 };

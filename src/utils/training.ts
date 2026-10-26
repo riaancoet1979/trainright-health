@@ -12,7 +12,7 @@ import type {
   ProgramExercise, MacroTargets, DayTypeTargets, BodyMetric, LoggedSet,
   RedFlagState, SessionLetter,
 } from '../types/training';
-import { PHASES, getPhaseForWeek, DEFAULT_DAY_TYPE_TARGETS, PROGRAM_WEEKS, isDeloadWeek } from '../data/program';
+import { PHASES, getPhaseForWeek, DEFAULT_DAY_TYPE_TARGETS, PROGRAM_WEEKS, isDeloadWeek, LEAN_GAIN_TARGETS, LEAN_GAIN_TARGETS_V1 } from '../data/program';
 import { getUserSettings, saveUserSettings } from './storage';
 import { markExported } from './migrations';
 import { writeStore } from '../sync/writeStore';
@@ -532,8 +532,16 @@ export const getDayTypeTargets = (): DayTypeTargets => {
   const s = getUserSettings() as ReturnType<typeof getUserSettings> & {
     dayTypeTargets?: DayTypeTargets;
   };
-  return s.dayTypeTargets ?? DEFAULT_DAY_TYPE_TARGETS;
+  const t = s.dayTypeTargets ?? DEFAULT_DAY_TYPE_TARGETS;
+  // Still on the original lean-gain preset → serve the current one.
+  if (sameTargets(t, LEAN_GAIN_TARGETS_V1)) return LEAN_GAIN_TARGETS;
+  return t;
 };
+
+const sameTargets = (a: DayTypeTargets, b: DayTypeTargets): boolean =>
+  (['training', 'rest'] as const).every((k) =>
+    a[k].dailyCalories === b[k].dailyCalories && a[k].dailyProtein === b[k].dailyProtein &&
+    a[k].dailyCarbs === b[k].dailyCarbs && a[k].dailyFats === b[k].dailyFats);
 
 export const saveDayTypeTargets = (t: DayTypeTargets): void => {
   const s = getUserSettings() as ReturnType<typeof getUserSettings> & {
